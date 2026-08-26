@@ -3659,3 +3659,926 @@ Expected: a `Review` sheet with the v3 questions, wrapped ground-truth text, and
 git add atlas_eval/review.py atlas_eval/cli.py tests/test_review_export.py
 git commit -m "feat: export SME review workbook with two-sheet layout"
 ```
+
+---
+
+### Task 13: Review verdict import
+
+Writes reviewer verdicts back into bank YAML as tracked diffs. Two guards are load-bearing: a question edited in Excel must not silently redefine a frozen question, and `ground_truth` is never written by import.
+
+**Files:**
+- Modify: `atlas_eval/review.py` (append)
+- Modify: `atlas_eval/cli.py` (add `review import`)
+- Test: `tests/test_review_import.py`
+
+**Interfaces:**
+- Consumes: `load_all_banks`, `normalize_ws`, `REVIEW_COLUMNS`, `REVIEW_SHEET`, `ACCURATE_CHOICES`.
+- Produces:
+  - `ACCURATE_TO_STATUS: dict[str, VerificationStatus]` — `{"yes": VERIFIED, "no": REJECTED, "unsure": NEEDS_SME}`
+  - `Transition` dataclass: `question_id`, `bank`, `old_status`, `new_status`, `reviewer`, `notes`
+  - `ImportReport` dataclass: `transitions: list[Transition]`, `errors: list[str]`, `unchanged: int`; property `ok -> bool`
+  - `read_review(path: Path) -> list[dict]`
+  - `import_review(path: Path, banks_dir: Path, reviewed_on: date, dry_run: bool = False) -> ImportReport`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_review_import.py
+from datetime import date
+from pathlib import Path
+
+from openpyxl import load_workbook
+
+from atlas_eval.dataset import load_bank
+from atlas_eval.models import VerificationStatus
+from atlas_eval.review import export_review, import_review
+
+BANK_YAML = """version: v3
+frozen_on: 2026-08-03
+question_sha256: PLACEHOLDER
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+questions:
+  - id: v3-Q1
+    text: Describe the Automated Collection Process.
+    type: term_redirect
+    type_note: term-redirect
+    expected_stance: redirect
+    ground_truth: |
+      Maps to the Accelerated Collection Process (ACP).
+    checks:
+      required_all: [ACP]
+      forbidden: [ETA-227]
+  - id: v3-Q2
+    after: v3-Q1
+    text: What does the acronym ACP stand for?
+    type: acronym_check
+    expected_stance: answer
+    ground_truth: |
+      Accelerated Collection Process.
+"""
+
+
+def _banks_dir(tmp_path):
+    from atlas_eval.dataset import compute_question_sha256
+    d = tmp_path / "banks"
+    d.mkdir()
+    p = d / "v3.yaml"
+    p.write_text(BANK_YAML)
+    bank = load_bank(p)
+    p.write_text(BANK_YAML.replace("PLACEHOLDER", compute_question_sha256(bank)))
+    return d
+
+
+def _sheet(path, edits):
+    """Export then apply {question_id: {column: value}} edits in place."""
+    wb = load_workbook(path)
+    ws = wb["Review"]
+    headers = [c.value for c in ws[1]]
+    for row in ws.iter_rows(min_row=2):
+        qid = row[0].value
+        for col, value in edits.get(qid, {}).items():
+            row[headers.index(col)].value = value
+    wb.save(path)
+
+
+def _roundtrip(tmp_path, edits):
+    banks = _banks_dir(tmp_path)
+    xlsx = tmp_path / "review.xlsx"
+    export_review([load_bank(banks / "v3.yaml")], xlsx)
+    _sheet(xlsx, edits)
+    return banks, xlsx
+
+
+def test_clean_roundtrip_leaves_the_file_byte_identical(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {})
+    before = (banks / "v3.yaml").read_bytes()
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert report.ok and report.transitions == []
+    assert report.unchanged == 2
+    assert (banks / "v3.yaml").read_bytes() == before, "no verdicts means no write"
+
+
+def test_yes_verdict_marks_verified(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {
+        "v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"},
+    })
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert report.ok
+    assert [(t.question_id, t.new_status) for t in report.transitions] == [
+        ("v3-Q1", VerificationStatus.VERIFIED)
+    ]
+    q1 = load_bank(banks / "v3.yaml").questions[0]
+    assert q1.verification.status is VerificationStatus.VERIFIED
+    assert q1.verification.verified_by == "Oscar"
+    assert str(q1.verification.verified_on) == "2026-08-28"
+
+
+def test_no_verdict_marks_rejected_and_keeps_the_question(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {
+        "v3-Q2": {"accurate?": "no", "reviewer": "Oscar",
+                  "comments": "No knowable answer; I did not know it either."},
+    })
+    import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    bank = load_bank(banks / "v3.yaml")
+    assert len(bank.questions) == 2, "a rejected question is retained, not deleted"
+    q2 = bank.questions[1]
+    assert q2.verification.status is VerificationStatus.REJECTED
+    assert "No knowable answer" in q2.verification.notes
+
+
+def test_unsure_verdict_marks_needs_sme(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "unsure", "reviewer": "Oscar"}})
+    import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert load_bank(banks / "v3.yaml").questions[0].verification.status is (
+        VerificationStatus.NEEDS_SME
+    )
+
+
+def test_reviewer_comments_land_in_notes_and_never_in_ground_truth(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {
+        "v3-Q1": {"accurate?": "no", "reviewer": "Oscar",
+                  "comments": "Actually it is the Accelerated Collection Population."},
+    })
+    before_gt = load_bank(banks / "v3.yaml").questions[0].ground_truth
+    import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    q1 = load_bank(banks / "v3.yaml").questions[0]
+    assert "Accelerated Collection Population" in q1.verification.notes
+    assert q1.ground_truth == before_gt, "import must never rewrite ground truth"
+
+
+def test_edited_question_text_aborts_the_whole_import(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {
+        "v3-Q1": {"accurate?": "yes", "reviewer": "Oscar",
+                  "question": "Describe the ACP, reworded in Excel"},
+        "v3-Q2": {"accurate?": "yes", "reviewer": "Oscar"},
+    })
+    before = (banks / "v3.yaml").read_bytes()
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert not report.ok
+    assert any("v3-Q1" in e and "question text" in e for e in report.errors)
+    assert (banks / "v3.yaml").read_bytes() == before, "abort must write nothing at all"
+
+
+def test_question_text_comparison_tolerates_whitespace_only_changes(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {
+        "v3-Q1": {"accurate?": "yes", "reviewer": "Oscar",
+                  "question": "  Describe the   Automated Collection Process.  "},
+    })
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert report.ok, report.errors
+
+
+def test_unknown_id_aborts(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {})
+    wb = load_workbook(xlsx)
+    wb["Review"].append(["v9-Q9", "a question from nowhere", "retrieval", "gt", "",
+                         "yes", "Oscar", ""])
+    wb.save(xlsx)
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert not report.ok
+    assert any("v9-Q9" in e for e in report.errors)
+
+
+def test_invalid_accurate_value_aborts(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "probably", "reviewer": "O"}})
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert not report.ok
+    assert any("probably" in e for e in report.errors)
+
+
+def test_verdict_without_a_reviewer_aborts(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "yes"}})
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert not report.ok
+    assert any("reviewer" in e.lower() for e in report.errors)
+
+
+def test_dry_run_reports_transitions_without_writing(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"}})
+    before = (banks / "v3.yaml").read_bytes()
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28), dry_run=True)
+    assert report.ok and len(report.transitions) == 1
+    assert (banks / "v3.yaml").read_bytes() == before
+
+
+def test_import_preserves_frozen_hash_and_formatting(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"}})
+    before = load_bank(banks / "v3.yaml").question_sha256
+    import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    text = (banks / "v3.yaml").read_text()
+    assert load_bank(banks / "v3.yaml").question_sha256 == before
+    assert "ground_truth: |" in text, "block scalars must survive the rewrite"
+    assert "after: v3-Q2" not in text and "after: v3-Q1" in text
+
+
+def test_import_is_idempotent(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"}})
+    import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    first = (banks / "v3.yaml").read_bytes()
+    second_report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert second_report.transitions == []
+    assert (banks / "v3.yaml").read_bytes() == first
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `python -m pytest tests/test_review_import.py -v`
+Expected: FAIL — `ImportError: cannot import name 'import_review'`
+
+- [ ] **Step 3: Append the implementation to `atlas_eval/review.py`**
+
+```python
+from dataclasses import dataclass, field
+from datetime import date as _date
+
+from openpyxl import load_workbook
+from ruamel.yaml import YAML
+
+from atlas_eval.dataset import load_bank, normalize_ws
+
+ACCURATE_TO_STATUS: dict[str, VerificationStatus] = {
+    "yes": VerificationStatus.VERIFIED,
+    "no": VerificationStatus.REJECTED,
+    "unsure": VerificationStatus.NEEDS_SME,
+}
+
+
+@dataclass
+class Transition:
+    question_id: str
+    bank: str
+    old_status: VerificationStatus
+    new_status: VerificationStatus
+    reviewer: str
+    notes: str | None
+
+
+@dataclass
+class ImportReport:
+    transitions: list[Transition] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    unchanged: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+
+def read_review(path: Path) -> list[dict]:
+    wb = load_workbook(path, data_only=True)
+    ws = wb[REVIEW_SHEET]
+    headers = [c.value for c in ws[1]]
+    rows: list[dict] = []
+    for row in ws.iter_rows(min_row=2):
+        values = [c.value for c in row]
+        if all(v in (None, "") for v in values):
+            continue
+        rows.append({h: values[i] for i, h in enumerate(headers) if h})
+    return rows
+
+
+def _text(value) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def import_review(
+    path: Path,
+    banks_dir: Path,
+    reviewed_on: _date,
+    dry_run: bool = False,
+) -> ImportReport:
+    """Write reviewer verdicts into bank YAML. Aborts wholesale on any error.
+
+    Never writes ground_truth: a reviewer correction is recorded in
+    verification.notes, and promoting it into ground truth is a deliberate
+    separate edit made in git.
+    """
+    report = ImportReport()
+
+    bank_paths = sorted(banks_dir.glob("*.yaml"))
+    banks = {p: load_bank(p) for p in bank_paths}
+    index: dict[str, tuple[Path, object]] = {}
+    for p, bank in banks.items():
+        for q in bank.questions:
+            index[q.id] = (p, q)
+
+    planned: dict[Path, dict[str, Transition]] = {}
+
+    for row in read_review(path):
+        qid = _text(row.get("id"))
+        if not qid:
+            continue
+        if qid not in index:
+            report.errors.append(
+                f"{qid}: unknown question id; it is not in any bank under {banks_dir}"
+            )
+            continue
+
+        bank_path, question = index[qid]
+
+        sheet_text = _text(row.get("question"))
+        if sheet_text and normalize_ws(sheet_text) != normalize_ws(question.text):
+            report.errors.append(
+                f"{qid}: question text in the sheet does not match the bank; an edit "
+                "made in the spreadsheet must not redefine a frozen question"
+            )
+            continue
+
+        verdict = _text(row.get("accurate?")).lower()
+        if not verdict:
+            report.unchanged += 1
+            continue
+        if verdict not in ACCURATE_TO_STATUS:
+            report.errors.append(
+                f"{qid}: 'accurate?' is {verdict!r}; expected one of "
+                f"{', '.join(ACCURATE_CHOICES)}"
+            )
+            continue
+
+        reviewer = _text(row.get("reviewer"))
+        if not reviewer:
+            report.errors.append(f"{qid}: verdict {verdict!r} has no reviewer name")
+            continue
+
+        new_status = ACCURATE_TO_STATUS[verdict]
+        comments = _text(row.get("comments"))
+        existing_notes = _text(row.get("notes"))
+        notes = comments or existing_notes or None
+
+        unchanged = (
+            question.verification.status is new_status
+            and question.verification.verified_by == reviewer
+            and (question.verification.notes or "") == (notes or "")
+        )
+        if unchanged:
+            report.unchanged += 1
+            continue
+
+        planned.setdefault(bank_path, {})[qid] = Transition(
+            question_id=qid, bank=banks[bank_path].version,
+            old_status=question.verification.status, new_status=new_status,
+            reviewer=reviewer, notes=notes,
+        )
+
+    if report.errors:
+        # Abort wholesale: a partial import leaves the corpus in a state nobody
+        # reviewed, and the reviewer cannot tell which verdicts landed.
+        return report
+
+    report.transitions = [t for edits in planned.values() for t in edits.values()]
+    if dry_run or not report.transitions:
+        return report
+
+    yaml = YAML(typ="rt")
+    yaml.preserve_quotes = True
+    yaml.width = 100
+
+    for bank_path, edits in planned.items():
+        with bank_path.open(encoding="utf-8") as fh:
+            doc = yaml.load(fh)
+        for entry in doc["questions"]:
+            transition = edits.get(str(entry.get("id")))
+            if transition is None:
+                continue
+            block = entry.get("verification")
+            if block is None:
+                entry["verification"] = block = {}
+            block["status"] = transition.new_status.value
+            block["verified_by"] = transition.reviewer
+            block["verified_on"] = reviewed_on.isoformat()
+            block["notes"] = transition.notes
+        with bank_path.open("w", encoding="utf-8") as fh:
+            yaml.dump(doc, fh)
+
+    return report
+```
+
+Add to `atlas_eval/cli.py`:
+
+```python
+def _cmd_review_import(args: argparse.Namespace) -> int:
+    from datetime import date as _date
+
+    from atlas_eval.review import import_review
+
+    reviewed_on = _date.fromisoformat(args.date) if args.date else _date.today()
+    report = import_review(Path(args.file), Path(args.banks), reviewed_on, args.dry_run)
+
+    if not report.ok:
+        for err in report.errors:
+            print(f"error: {err}")
+        print(f"\nnothing was written ({len(report.errors)} error(s)).")
+        return 1
+
+    for t in sorted(report.transitions, key=lambda t: t.question_id):
+        print(f"{t.question_id}: {t.old_status.value} -> {t.new_status.value} "
+              f"(by {t.reviewer})")
+    verb = "would apply" if args.dry_run else "applied"
+    print(f"\n{verb} {len(report.transitions)} verdict(s); "
+          f"{report.unchanged} row(s) unchanged.")
+    return 0
+```
+
+Register inside `main`, alongside `review export`:
+
+```python
+    p_imp = review_sub.add_parser("import", help="write reviewer verdicts back")
+    p_imp.add_argument("file")
+    p_imp.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_imp.add_argument("--date", help="review date, YYYY-MM-DD; defaults to today")
+    p_imp.add_argument("--dry-run", action="store_true")
+    p_imp.set_defaults(func=_cmd_review_import)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `python -m pytest tests/test_review_import.py -v`
+Expected: PASS, 13 passed
+
+- [ ] **Step 5: Exercise the real round trip**
+
+```bash
+python -m atlas_eval.cli review export --bank v3 -o /tmp/v3_review.xlsx
+python -m atlas_eval.cli review import /tmp/v3_review.xlsx --dry-run
+git diff --stat data/banks/
+```
+
+Expected: export succeeds, the dry-run import reports 0 verdicts and 8 unchanged rows, and `git diff` is empty. An empty diff on an unedited round trip is the property that makes reviewer verdicts legible as diffs later.
+
+- [ ] **Step 6: Commit**
+
+```bash
+python -m pytest -q
+git add atlas_eval/review.py atlas_eval/cli.py tests/test_review_import.py
+git commit -m "feat: import SME verdicts into bank YAML with abort-on-mismatch guards"
+```
+
+---
+
+### Task 14: README and CI
+
+Run this task after Task 15, since the README documents the `report` command.
+
+**Files:**
+- Create: `README.md`
+- Create: `.github/workflows/ci.yml`
+
+**Interfaces:**
+- Consumes: the `atlas-eval` CLI.
+- Produces: no code interfaces.
+
+- [ ] **Step 1: Write the README**
+
+```markdown
+# Atlas Eval Harness
+
+Auditing harness for the NJDOL Atlas chat agents. It evaluates the AWS Quick agent
+today and is built so a local LLM and a future Bedrock agent can be scored against the
+same frozen question banks, producing directly comparable numbers.
+
+Design: [docs/superpowers/specs/2026-08-26-atlas-eval-harness-design.md](docs/superpowers/specs/2026-08-26-atlas-eval-harness-design.md)
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `data/banks/` | Frozen question banks, one YAML per version. Ground truth lives here. |
+| `data/runs/` | One directory per run: metadata, responses, transcript, config snapshot, scores. |
+| `data/scores.csv` | **Generated** rollup of every complete run. Do not hand edit. |
+| `reference/` | Migrated audit material that is not part of the dataset. |
+| `atlas_eval/` | The harness. |
+
+## Everyday commands
+
+Validate every bank offline (no AWS, no network):
+
+    atlas-eval validate
+
+Freeze a bank once its questions are settled:
+
+    atlas-eval freeze --bank data/banks/v6.yaml --date 2026-09-01
+
+Send a bank for SME review, then import the verdicts:
+
+    atlas-eval review export --bank v3 --status unverified -o v3_review.xlsx
+    atlas-eval review import v3_review_oscar.xlsx --dry-run
+    atlas-eval review import v3_review_oscar.xlsx
+
+Report scores for every run, verified and exploratory kept separate:
+
+    atlas-eval report
+
+## How scoring works
+
+Two layers, kept separate on purpose.
+
+**Deterministic** — literal, case-insensitive substring matching against each question's
+`required_all`, `required_any`, `forbidden` and `expect_citations`. No model is involved
+and no semantic similarity is used, so a score computed today is comparable to one from
+three months ago.
+
+**Rubric** — the five dimensions carried over from the original audit
+(`citations`, `correctness`, `gap_honesty`, `scope_discipline`, `clarity`, 0-2 each).
+An LLM drafts these against the answer key and a human reviews them, which is the
+existing Quick Chat Audit process. Each row records `scored_by` and `confirmed_by`, so a
+report can be restricted to human-confirmed scores.
+
+## Ground truth and verification
+
+The banks were built with AI assistance and are being verified by SMEs incrementally, so
+`verification.status` is per question and a bank is normally partly verified. Reports give
+two figures and never merge them: a **verified score** over `status: verified` questions,
+which is the defensible number, and an **exploratory score** over the full bank, labelled
+unvetted.
+
+`rejected` questions stay in the file with the reason. Several questions have no knowable
+answer, and keeping the verdict stops them being re-litigated.
+
+## Development
+
+    python -m pip install -e '.[dev]'
+    atlas-eval validate
+    python -m pytest -q
+
+Both run without AWS credentials or network access.
+```
+
+- [ ] **Step 2: Write the CI workflow**
+
+```yaml
+# .github/workflows/ci.yml
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      # No AWS credentials are configured, by design: everything here is offline.
+      - run: python -m atlas_eval.cli validate --banks data/banks
+      - run: python -m pytest -q
+```
+
+- [ ] **Step 3: Verify both commands pass locally exactly as CI runs them**
+
+```bash
+python -m atlas_eval.cli validate --banks data/banks
+python -m pytest -q
+```
+
+Expected: `validate` prints `OK: 6 bank(s), ...` and the suite is fully green.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add README.md .github/workflows/ci.yml
+git commit -m "docs: add README and offline CI workflow"
+```
+
+---
+
+### Task 15: Verified and exploratory score reporting
+
+The spec requires two figures that are never merged: a defensible score over `status: verified` questions and an exploratory score over the full bank. This is the command that produces the number you put in front of Billy, so the labelling matters as much as the arithmetic.
+
+**Files:**
+- Create: `atlas_eval/report.py`
+- Modify: `atlas_eval/cli.py` (add `report`)
+- Test: `tests/test_report.py`
+
+**Interfaces:**
+- Consumes: `load_all_banks`, `read_run`, `RunStatus`, `Rubric`.
+- Produces:
+  - `Subset` dataclass: `label: str`, `question_count: int`, `deterministic_pass: int`, `rubric_total: int | None`, `rubric_max: int | None`, `confirmed_count: int`
+  - `RunReport` dataclass: `run_id`, `bank_version`, `backend`, `status`, `verified: Subset`, `exploratory: Subset`
+  - `build_report(run_dir: Path, banks_dir: Path) -> RunReport`
+  - `format_report(report: RunReport) -> str`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_report.py
+from datetime import date, datetime
+from pathlib import Path
+
+import pytest
+
+from atlas_eval.models import (
+    Bank, Checks, Question, QuestionType, Stance, Verification, VerificationStatus,
+)
+from atlas_eval.report import build_report, format_report
+from atlas_eval.runs import RunMeta, RunStatus, ScoreRow, write_run
+from atlas_eval.scoring import Rubric, score_answer
+
+BANK = """version: v3
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+questions:
+  - id: v3-Q1
+    text: verified question
+    type: retrieval
+    expected_stance: answer
+    ground_truth: gt
+    checks:
+      required_all: [ACP]
+    verification:
+      status: verified
+      verified_by: Oscar
+      verified_on: 2026-08-28
+  - id: v3-Q2
+    text: unverified question
+    type: retrieval
+    expected_stance: answer
+    ground_truth: gt
+    checks:
+      required_all: [DXCBDA2R]
+    verification:
+      status: unverified
+"""
+
+
+def _setup(tmp_path, q1_answer, q2_answer, confirmed=True):
+    banks = tmp_path / "banks"
+    banks.mkdir()
+    (banks / "v3.yaml").write_text(BANK)
+
+    from atlas_eval.dataset import load_bank
+    bank = load_bank(banks / "v3.yaml")
+    q1, q2 = bank.questions
+
+    def row(q, answer):
+        return ScoreRow(
+            question_id=q.id, type=q.type.value,
+            verification_status=q.verification.status.value,
+            rubric=Rubric(citations=2, correctness=2, gap_honesty=2,
+                          scope_discipline=2, clarity=2,
+                          scored_by="claude-opus-5",
+                          confirmed_by="Michael" if confirmed else None),
+            deterministic=score_answer(q, answer),
+        )
+
+    meta = RunMeta(
+        run_id="2026-08-28_1000_quick_v3", backend="quick", transport="paste",
+        bank_version="v3", question_sha256="x" * 64, agent="a",
+        started_at=datetime(2026, 8, 28, 10, 0), finished_at=datetime(2026, 8, 28, 10, 30),
+        status=RunStatus.COMPLETE,
+    )
+    runs = tmp_path / "runs"
+    run_dir = write_run(runs, meta, {q1.id: q1_answer, q2.id: q2_answer}, "t", {},
+                        [row(q1, q1_answer), row(q2, q2_answer)])
+    return run_dir, banks
+
+
+def test_verified_and_exploratory_counts_differ(tmp_path):
+    run_dir, banks = _setup(tmp_path, "the ACP applies", "DXCBDA2R runs nightly")
+    rep = build_report(run_dir, banks)
+    assert rep.verified.question_count == 1
+    assert rep.exploratory.question_count == 2
+    assert rep.verified.label == "verified"
+    assert rep.exploratory.label == "exploratory (unvetted)"
+
+
+def test_verified_subset_excludes_unverified_failures(tmp_path):
+    # Q1 (verified) passes; Q2 (unverified) fails. The defensible number is 1/1.
+    run_dir, banks = _setup(tmp_path, "the ACP applies", "no mention of the program")
+    rep = build_report(run_dir, banks)
+    assert (rep.verified.deterministic_pass, rep.verified.question_count) == (1, 1)
+    assert (rep.exploratory.deterministic_pass, rep.exploratory.question_count) == (1, 2)
+
+
+def test_rubric_totals_are_summed_over_each_subset(tmp_path):
+    run_dir, banks = _setup(tmp_path, "the ACP applies", "DXCBDA2R runs nightly")
+    rep = build_report(run_dir, banks)
+    assert (rep.verified.rubric_total, rep.verified.rubric_max) == (10, 10)
+    assert (rep.exploratory.rubric_total, rep.exploratory.rubric_max) == (20, 20)
+
+
+def test_confirmed_count_tracks_human_signoff(tmp_path):
+    run_dir, banks = _setup(tmp_path, "the ACP applies", "DXCBDA2R runs nightly",
+                            confirmed=False)
+    rep = build_report(run_dir, banks)
+    assert rep.exploratory.confirmed_count == 0
+    assert rep.verified.confirmed_count == 0
+
+
+def test_report_refuses_an_incomplete_run(tmp_path):
+    run_dir, banks = _setup(tmp_path, "a", "b")
+    text = (run_dir / "run.yaml").read_text().replace("complete", "incomplete")
+    (run_dir / "run.yaml").write_text(text)
+    with pytest.raises(ValueError) as exc:
+        build_report(run_dir, banks)
+    assert "incomplete" in str(exc.value)
+
+
+def test_format_labels_the_unvetted_figure_explicitly(tmp_path):
+    run_dir, banks = _setup(tmp_path, "the ACP applies", "no mention")
+    text = format_report(build_report(run_dir, banks))
+    assert "verified" in text and "unvetted" in text
+    assert "1/1" in text and "1/2" in text
+    # The two figures must never be presented as one number.
+    assert "combined" not in text.lower()
+
+
+def test_format_warns_when_no_questions_are_verified(tmp_path):
+    banks = tmp_path / "banks"
+    banks.mkdir()
+    (banks / "v3.yaml").write_text(BANK.replace("status: verified", "status: unverified")
+                                       .replace("verified_by: Oscar", "verified_by: null")
+                                       .replace("verified_on: 2026-08-28", "verified_on: null"))
+    run_dir, _ = _setup(tmp_path / "other", "the ACP applies", "DXCBDA2R runs nightly")
+    rep = build_report(run_dir, banks)
+    assert rep.verified.question_count == 0
+    text = format_report(rep)
+    assert "no verified questions" in text.lower()
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `python -m pytest tests/test_report.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'atlas_eval.report'`
+
+- [ ] **Step 3: Write the implementation**
+
+```python
+# atlas_eval/report.py
+"""Reporting that keeps the defensible number separate from the exploratory one.
+
+The banks were built with AI assistance and are verified incrementally, so a
+run normally covers a partly verified bank. Merging the two figures would
+present unvetted ground truth as though an SME had signed off on it, so they
+are computed and printed separately, always.
+"""
+
+from __future__ import annotations
+
+import csv
+from dataclasses import dataclass
+from pathlib import Path
+
+from atlas_eval.dataset import load_all_banks
+from atlas_eval.models import VerificationStatus
+from atlas_eval.runs import RunStatus, read_run
+from atlas_eval.scoring import RUBRIC_DIMENSIONS
+
+
+@dataclass
+class Subset:
+    label: str
+    question_count: int
+    deterministic_pass: int
+    rubric_total: int | None
+    rubric_max: int | None
+    confirmed_count: int
+
+
+@dataclass
+class RunReport:
+    run_id: str
+    bank_version: str
+    backend: str
+    status: RunStatus
+    verified: Subset
+    exploratory: Subset
+
+
+def _read_deterministic_pass(run_dir: Path) -> dict[str, bool | None]:
+    """scores.csv is the record; read the deterministic column back verbatim."""
+    out: dict[str, bool | None] = {}
+    with (run_dir / "scores.csv").open(newline="", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            raw = (rec.get("deterministic_pass") or "").strip()
+            out[rec["question_id"]] = None if raw == "" else raw == "True"
+    return out
+
+
+def _subset(label: str, rows, passes: dict[str, bool | None]) -> Subset:
+    scored = [r for r in rows if r.rubric.total is not None]
+    return Subset(
+        label=label,
+        question_count=len(rows),
+        deterministic_pass=sum(1 for r in rows if passes.get(r.question_id) is True),
+        rubric_total=sum(r.rubric.total for r in scored) if scored else None,
+        rubric_max=len(scored) * 2 * len(RUBRIC_DIMENSIONS) if scored else None,
+        confirmed_count=sum(1 for r in rows if r.rubric.is_confirmed),
+    )
+
+
+def build_report(run_dir: Path, banks_dir: Path) -> RunReport:
+    meta, _responses, rows = read_run(run_dir)
+    if meta.status is not RunStatus.COMPLETE:
+        raise ValueError(
+            f"{meta.run_id} is {meta.status.value}; an incomplete run cannot be "
+            "reported as a bank result"
+        )
+
+    bank = next((b for b in load_all_banks(banks_dir) if b.version == meta.bank_version), None)
+    if bank is None:
+        raise ValueError(f"no bank {meta.bank_version} under {banks_dir}")
+
+    status_by_id = {q.id: q.verification.status for q in bank.questions}
+    passes = _read_deterministic_pass(run_dir)
+
+    verified_rows = [
+        r for r in rows if status_by_id.get(r.question_id) is VerificationStatus.VERIFIED
+    ]
+
+    return RunReport(
+        run_id=meta.run_id,
+        bank_version=meta.bank_version,
+        backend=meta.backend,
+        status=meta.status,
+        verified=_subset("verified", verified_rows, passes),
+        exploratory=_subset("exploratory (unvetted)", rows, passes),
+    )
+
+
+def _line(s: Subset) -> str:
+    rubric = (
+        "rubric n/a" if s.rubric_total is None
+        else f"rubric {s.rubric_total}/{s.rubric_max}"
+    )
+    return (f"  {s.label:<24} deterministic {s.deterministic_pass}/{s.question_count}"
+            f"   {rubric}   human-confirmed {s.confirmed_count}/{s.question_count}")
+
+
+def format_report(report: RunReport) -> str:
+    lines = [
+        f"{report.run_id}  ({report.backend}, bank {report.bank_version})",
+        _line(report.verified),
+        _line(report.exploratory),
+    ]
+    if report.verified.question_count == 0:
+        lines.append(
+            "  NOTE: no verified questions in this bank yet, so there is no "
+            "defensible figure. Treat the exploratory number as unvetted."
+        )
+    return "\n".join(lines)
+```
+
+Add to `atlas_eval/cli.py`:
+
+```python
+def _cmd_report(args: argparse.Namespace) -> int:
+    from atlas_eval.report import build_report, format_report
+
+    run_dirs = (
+        [Path(args.run)] if args.run
+        else sorted(p for p in Path(args.runs).glob("*") if p.is_dir())
+    )
+    shown = 0
+    for run_dir in run_dirs:
+        try:
+            print(format_report(build_report(run_dir, Path(args.banks))))
+            shown += 1
+        except ValueError as err:
+            print(f"{run_dir.name}: skipped: {err}")
+    if not shown:
+        print("no complete runs to report")
+        return 1
+    return 0
+```
+
+Register inside `main`:
+
+```python
+    p_rep = sub.add_parser("report", help="verified and exploratory scores per run")
+    p_rep.add_argument("--run", help="a single run directory; default is all runs")
+    p_rep.add_argument("--runs", default="data/runs")
+    p_rep.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_rep.set_defaults(func=_cmd_report)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `python -m pytest tests/test_report.py -v`
+Expected: PASS, 7 passed
+
+- [ ] **Step 5: Report on the migrated runs**
+
+```bash
+python -m atlas_eval.cli report --banks data/banks --runs data/runs | head -30
+```
+
+Expected: one block per migrated run. Every block shows `deterministic 0/N` (legacy runs were never deterministically scored, so the column is empty), real rubric totals, and `human-confirmed 0/N` unless you stamped `--confirmed-by` during migration. Each should carry the "no verified questions" note until the SME pass lands.
+
+- [ ] **Step 6: Commit**
+
+```bash
+python -m pytest -q
+git add atlas_eval/report.py atlas_eval/cli.py tests/test_report.py
+git commit -m "feat: report verified and exploratory scores as separate figures"
+```
