@@ -117,23 +117,29 @@ def _cmd_review_import(args: argparse.Namespace) -> int:
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    from atlas_eval.report import build_report, format_report
+    from atlas_eval.report import BankNotFoundError, IncompleteRunError, build_report, format_report
 
     run_dirs = (
         [Path(args.run)] if args.run
         else sorted(p for p in Path(args.runs).glob("*") if p.is_dir())
     )
     shown = 0
+    had_error = False
     for run_dir in run_dirs:
         try:
             print(format_report(build_report(run_dir, Path(args.banks))))
             shown += 1
-        except ValueError as err:
+        except BankNotFoundError as err:
+            # A missing or renamed bank is a configuration bug, not a routine
+            # skip: it must not blend in among ordinary incomplete-run lines.
+            print(f"{run_dir.name}: ERROR: {err}")
+            had_error = True
+        except IncompleteRunError as err:
             print(f"{run_dir.name}: skipped: {err}")
-    if not shown:
+    if not shown and not had_error:
         print("no complete runs to report")
         return 1
-    return 0
+    return 1 if had_error else 0
 
 
 def main(argv: list[str] | None = None) -> int:

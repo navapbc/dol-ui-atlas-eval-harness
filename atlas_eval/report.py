@@ -23,6 +23,7 @@ class Subset:
     label: str
     question_count: int
     deterministic_pass: int
+    deterministic_scored: int
     rubric_total: int | None
     rubric_max: int | None
     confirmed_count: int
@@ -38,6 +39,19 @@ class RunReport:
     exploratory: Subset
 
 
+class IncompleteRunError(ValueError):
+    """A run that has not finished yet. An ordinary, expected skip."""
+
+
+class BankNotFoundError(Exception):
+    """No bank matches this run's bank_version.
+
+    Unlike an incomplete run, this means the report cannot be trusted: a
+    missing or renamed bank is a configuration bug, and the reader must be
+    told, not just shown another routine "skipped: ..." line.
+    """
+
+
 def _read_deterministic_pass(run_dir: Path) -> dict[str, bool | None]:
     """scores.csv is the record; read the deterministic column back verbatim."""
     out: dict[str, bool | None] = {}
@@ -50,10 +64,12 @@ def _read_deterministic_pass(run_dir: Path) -> dict[str, bool | None]:
 
 def _subset(label: str, rows, passes: dict[str, bool | None]) -> Subset:
     scored = [r for r in rows if r.rubric.total is not None]
+    det_scored = [r for r in rows if passes.get(r.question_id) is not None]
     return Subset(
         label=label,
         question_count=len(rows),
-        deterministic_pass=sum(1 for r in rows if passes.get(r.question_id) is True),
+        deterministic_pass=sum(1 for r in det_scored if passes.get(r.question_id) is True),
+        deterministic_scored=len(det_scored),
         rubric_total=sum(r.rubric.total for r in scored) if scored else None,
         rubric_max=len(scored) * 2 * len(RUBRIC_DIMENSIONS) if scored else None,
         confirmed_count=sum(1 for r in rows if r.rubric.is_confirmed),
@@ -63,14 +79,14 @@ def _subset(label: str, rows, passes: dict[str, bool | None]) -> Subset:
 def build_report(run_dir: Path, banks_dir: Path) -> RunReport:
     meta, _responses, rows = read_run(run_dir)
     if meta.status is not RunStatus.COMPLETE:
-        raise ValueError(
+        raise IncompleteRunError(
             f"{meta.run_id} is {meta.status.value}; an incomplete run cannot be "
             "reported as a bank result"
         )
 
     bank = next((b for b in load_all_banks(banks_dir) if b.version == meta.bank_version), None)
     if bank is None:
-        raise ValueError(f"no bank {meta.bank_version} under {banks_dir}")
+        raise BankNotFoundError(f"no bank {meta.bank_version} under {banks_dir}")
 
     status_by_id = {q.id: q.verification.status for q in bank.questions}
     passes = _read_deterministic_pass(run_dir)
@@ -89,12 +105,24 @@ def build_report(run_dir: Path, banks_dir: Path) -> RunReport:
     )
 
 
+def _deterministic_text(s: Subset) -> str:
+    """Mirror the rubric's "n/a" wording so an unscored subset never reads as 0/N."""
+    if s.deterministic_scored == 0:
+        return "deterministic n/a"
+    if s.deterministic_scored == s.question_count:
+        return f"deterministic {s.deterministic_pass}/{s.question_count}"
+    # Partial scoring: report against the scored count, and say so explicitly,
+    # so the denominator is never mistaken for the full subset.
+    return (f"deterministic {s.deterministic_pass}/{s.deterministic_scored} scored"
+            f" ({s.question_count} total)")
+
+
 def _line(s: Subset) -> str:
     rubric = (
         "rubric n/a" if s.rubric_total is None
         else f"rubric {s.rubric_total}/{s.rubric_max}"
     )
-    return (f"  {s.label:<24} deterministic {s.deterministic_pass}/{s.question_count}"
+    return (f"  {s.label:<24} {_deterministic_text(s)}"
             f"   {rubric}   human-confirmed {s.confirmed_count}/{s.question_count}")
 
 
