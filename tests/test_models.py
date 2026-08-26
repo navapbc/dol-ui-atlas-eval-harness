@@ -34,8 +34,13 @@ def test_question_rejects_unknown_type():
 
 
 def test_question_rejects_unknown_field():
-    with pytest.raises(ValidationError):
+    # extra="forbid" must reject a typo'd field name rather than silently
+    # dropping it: a hand-edited bank YAML has to fail loudly.
+    with pytest.raises(ValidationError) as exc:
         _q(expected_stace=Stance.ANSWER)
+    errors = exc.value.errors()
+    assert any(e["type"] == "extra_forbidden" for e in errors), errors
+    assert any("expected_stace" in str(e["loc"]) for e in errors), errors
 
 
 def test_all_thirteen_types_and_four_stances_exist():
