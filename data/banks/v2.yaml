@@ -28,10 +28,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["PWBR"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCBD87E"]
   verification:
     status: unverified
     verified_by:
@@ -53,10 +53,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["Tuesday", "Monday"]
     required_any: []
-    forbidden: []
-    expect_citations: []
+    forbidden: ["not restricted by their SSN"]
+    expect_citations: ["UIMB0440"]
   verification:
     status: unverified
     verified_by:
@@ -78,10 +78,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["262-CALC"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCBD87E"]
   verification:
     status: unverified
     verified_by:
@@ -106,7 +106,7 @@ questions:
     required_all: []
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["T109TABL"]
   verification:
     status: unverified
     verified_by:
@@ -133,7 +133,7 @@ questions:
     required_all: []
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["LOOPLE11"]
   verification:
     status: unverified
     verified_by:
@@ -155,10 +155,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["quarter end"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["JO7UD158"]
   verification:
     status: unverified
     verified_by:
@@ -178,7 +178,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
+    required_any: ["absent from the KB", "not in the KB", "not documented"]
     forbidden: []
     expect_citations: []
   verification:
@@ -201,8 +201,8 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
-    forbidden: []
+    required_any: ["not available"]
+    forbidden: ["D02JTSE", "D02JTSI"]
     expect_citations: []
   verification:
     status: unverified

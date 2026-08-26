@@ -31,10 +31,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["real time"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCBDA2R", "DXCBDA3S", "L2DCLNUP"]
   verification:
     status: unverified
     verified_by:
@@ -60,10 +60,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["PAYVSAM", "NOPAY"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCBDA2R", "DXCBD00R"]
   verification:
     status: unverified
     verified_by:
@@ -93,10 +93,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["DXCBD87E"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["UIMI0440", "DXCBDA3R"]
   verification:
     status: unverified
     verified_by:
@@ -125,10 +125,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["PWBR"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCD037S"]
   verification:
     status: unverified
     verified_by:
@@ -155,10 +155,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["CODELOOP"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["T120TABL"]
   verification:
     status: unverified
     verified_by:
@@ -186,10 +186,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["Combined Wage Claim"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCD034S", "DXCD037S", "DXCBD33S"]
   verification:
     status: unverified
     verified_by:
@@ -209,7 +209,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
+    required_any: ["not found", "does not exist", "no such program"]
     forbidden: []
     expect_citations: []
   verification:
@@ -236,8 +236,8 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
-    forbidden: []
+    required_any: ["not in the KB", "not documented"]
+    forbidden: ["NEWCOPY", "PHASEIN", "DB2 BIND"]
     expect_citations: []
   verification:
     status: unverified

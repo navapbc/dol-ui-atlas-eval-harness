@@ -33,10 +33,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
-    required_any: []
-    forbidden: []
-    expect_citations: []
+    required_all: ["ACP"]
+    required_any: ["Accelerated Collection Process", "Accelerated Collection Population"]
+    forbidden: ["ETA-227"]
+    expect_citations: ["UIMB0730", "UIMB0731", "L2ACPD"]
   verification:
     status: unverified
     verified_by:
@@ -63,8 +63,8 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
-    forbidden: []
+    required_any: ["Accelerated Collection Process", "Accelerated Collection Population"]
+    forbidden: ["Automated Collection Process"]
     expect_citations: []
   verification:
     status: unverified
@@ -117,10 +117,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["charge percentage"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCBP500"]
   verification:
     status: unverified
     verified_by:
@@ -150,10 +150,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["VERIS", "00000110"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["UIMV_SSN_RETIRED", "UIMB0004"]
   verification:
     status: unverified
     verified_by:
@@ -179,8 +179,8 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
-    forbidden: []
+    required_any: ["not found", "not documented"]
+    forbidden: ["display VERIS results"]
     expect_citations: []
   verification:
     status: unverified
@@ -209,10 +209,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["7777", "9000", "P100"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["DXCBDA2R"]
   verification:
     status: unverified
     verified_by:
@@ -238,8 +238,8 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
-    forbidden: []
+    required_any: ["not found", "not documented"]
+    forbidden: ["phone payment system"]
     expect_citations: []
   verification:
     status: unverified
@@ -266,10 +266,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all: ["01001-76999"]
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations: ["UIMB0025"]
   verification:
     status: unverified
     verified_by:
