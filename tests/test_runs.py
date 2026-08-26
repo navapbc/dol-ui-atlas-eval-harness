@@ -25,7 +25,7 @@ def _meta(**over):
         agent_id="093ac4e3-0712-481e-af95-9ddc5e4fc734",
         conversation_id="e33bea76-a1f6-4c78-8c1d-9d735e3dfb82",
         started_at=datetime(2026, 7, 27, 11, 19),
-        finished_at=datetime(2026, 7, 27, 11, 40),
+        finished_at=datetime(2026, 7, 27, 11, 19),
         harness_git_sha=None, status=RunStatus.COMPLETE,
     )
     base.update(over)
@@ -152,6 +152,27 @@ def test_provenance_survives_write_then_read(tmp_path):
     assert rows[0].rubric.scored_by == "claude-opus-5"
     assert rows[0].rubric.confirmed_by is None
     assert rows[0].rubric.is_confirmed is False
+
+
+def test_run_finished_tracks_finished_at_not_run_id(tmp_path):
+    runs = tmp_path / "runs"
+    meta = _meta(run_id="2026-01-01_0000_quick_v1",
+                 finished_at=datetime(2026, 7, 27, 11, 19))
+    write_run(runs, meta, {"v1-Q1": "a"}, "t", {}, [_row("v1-Q1")])
+    out = tmp_path / "scores.csv"
+    regenerate_rollup(runs, out)
+    with out.open(newline="") as fh:
+        row = next(csv.DictReader(fh))
+    assert row["run_finished"] == "2026-07-27 11:19"
+
+
+def test_complete_run_with_no_finished_at_writes_empty_cell(tmp_path):
+    runs = tmp_path / "runs"
+    meta = _meta(status=RunStatus.COMPLETE, finished_at=None)
+    run_dir = write_run(runs, meta, {"v1-Q1": "a"}, "t", {}, [_row("v1-Q1")])
+    with (run_dir / "scores.csv").open(newline="") as fh:
+        row = next(csv.DictReader(fh))
+    assert row["run_finished"] == ""
 
 
 def test_unscored_rubric_writes_empty_cells_not_zeros(tmp_path):

@@ -90,20 +90,8 @@ def _joined(values: list[str]) -> str:
     return "; ".join(values)
 
 
-def _run_finished_display(run_id: str) -> str:
-    """Render the `run_finished` cell from the timestamp embedded in run_id.
-
-    run_id is stamped by make_run_id() from the run's finish time, so parsing
-    it back out (rather than reformatting meta.finished_at, which is None for
-    an incomplete run and need not match a run_id minted earlier) keeps this
-    column populated and consistent for every run, complete or not.
-    """
-    date_part, time_part, _rest = run_id.split("_", 2)
-    return f"{date_part} {time_part[:2]}:{time_part[2:]}"
-
-
 def _row_cells(meta: RunMeta, row: ScoreRow) -> dict[str, object]:
-    finished = _run_finished_display(meta.run_id)
+    finished = "" if meta.finished_at is None else f"{meta.finished_at:%Y-%m-%d %H:%M}"
     d = row.deterministic
     cells: dict[str, object] = {
         "run_finished": finished,
