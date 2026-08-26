@@ -209,7 +209,7 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: ["7777", "9000", "P100"]
+    required_all: ["7777", "9000", "Manual P100"]
     required_any: []
     forbidden: []
     expect_citations: ["DXCBDA2R"]

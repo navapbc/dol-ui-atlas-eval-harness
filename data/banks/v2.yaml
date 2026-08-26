@@ -28,9 +28,9 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: ["PWBR"]
-    required_any: []
-    forbidden: []
+    required_all: ["PWBR", "1.2"]
+    required_any: ["WBR + 5", "WBR+5"]
+    forbidden: ["PWBR equals exactly $5"]
     expect_citations: ["DXCBD87E"]
   verification:
     status: unverified

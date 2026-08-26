@@ -1,5 +1,6 @@
 """Guards over the real migrated corpus, not synthetic fixtures."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -60,16 +61,38 @@ def test_refuse_and_hedge_questions_have_no_required_citations():
 _DISALLOWED_ABSENCE_FRAGMENTS = (
     "not found",
     "does not exist",
+    "doesn't exist",
     "no such",
     "not available",
     "not documented",
     "not in the kb",
+    "isn't in",
     "cannot",
     "could not",
     "unable",
     "no evidence",
     "not present",
+    "zero hits",
+    "no trace",
+    "outside what i have",
 )
+
+# A run of two-or-more uppercase letters (an identifier like "DXCBD87E" or "WBR")
+# or any digit. Either one marks a term as domain-specific rather than generic
+# absence prose, regardless of which _DISALLOWED_ABSENCE_FRAGMENTS substring it
+# also happens to contain.
+_DOMAIN_TOKEN = re.compile(r"[A-Z]{2,}|\d")
+
+
+def _is_generic_absence_phrase(term: str) -> bool:
+    lowered = term.lower()
+    has_fragment = any(fragment in lowered for fragment in _DISALLOWED_ABSENCE_FRAGMENTS)
+    if not has_fragment:
+        return False
+    # A domain-specific token (an identifier or a number) makes the term
+    # substantive even though it also contains an ordinary-English fragment,
+    # e.g. "cannot exceed 1.2" or "DXCBD87E not present".
+    return not _DOMAIN_TOKEN.search(term)
 
 
 def test_required_terms_are_not_generic_refusal_phrasing():
@@ -81,17 +104,38 @@ def test_required_terms_are_not_generic_refusal_phrasing():
     # agent phrases differently, generating exactly the score instability the
     # deterministic layer exists to remove. This guards every bank, including the
     # not-yet-populated v4-v6, so this class of defect can't return.
+    #
+    # The rule is sharper than a bare fragment scan: a term is only flagged when it
+    # contains a generic absence fragment AND has no domain-specific token (no
+    # uppercase identifier of two-or-more characters, no digit). That keeps a future
+    # substantive term such as "cannot exceed 1.2" or "DXCBD87E not present" legal
+    # while still catching "not documented" or "no trace".
     for bank in load_all_banks(BANKS):
         for q in bank.questions:
             for name in ("required_all", "required_any"):
                 for term in getattr(q.checks, name):
-                    lowered = term.lower()
-                    for fragment in _DISALLOWED_ABSENCE_FRAGMENTS:
-                        assert fragment not in lowered, (
-                            f"{q.id}: {name} term {term!r} is a generic refusal/"
-                            f"absence phrase (matched {fragment!r}); refusal is a "
-                            "stance judgment, not a deterministic content check"
-                        )
+                    assert not _is_generic_absence_phrase(term), (
+                        f"{q.id}: {name} term {term!r} is a generic refusal/"
+                        "absence phrase with no domain-specific token; refusal is "
+                        "a stance judgment, not a deterministic content check"
+                    )
+
+
+def test_generic_absence_phrase_is_flagged():
+    assert _is_generic_absence_phrase("not documented")
+    assert _is_generic_absence_phrase("no trace of it")
+    assert _is_generic_absence_phrase("isn't in the source")
+    assert _is_generic_absence_phrase("zero hits for this term")
+
+
+def test_substantive_term_with_ordinary_english_fragment_is_allowed():
+    # These contain a fragment from the disallowed list ("cannot", "unable",
+    # "no evidence", "not present") but are legitimate domain content because
+    # they carry a number or an uppercase identifier.
+    assert not _is_generic_absence_phrase("cannot exceed 1.2")
+    assert not _is_generic_absence_phrase("DXCBD87E not present")
+    assert not _is_generic_absence_phrase("unable to exceed WBR")
+    assert not _is_generic_absence_phrase("no evidence of PWBR above 5")
 
 
 def test_run_order_resolves_for_every_bank():
