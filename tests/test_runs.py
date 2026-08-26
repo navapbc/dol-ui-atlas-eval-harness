@@ -3,6 +3,7 @@ from datetime import datetime
 
 import pytest
 
+from atlas_eval.cli import main
 from atlas_eval.models import Checks, Question, QuestionType, Stance
 from atlas_eval.runs import (
     ROLLUP_COLUMNS, RunMeta, RunStatus, ScoreRow, make_run_id, read_run,
@@ -184,3 +185,52 @@ def test_unscored_rubric_writes_empty_cells_not_zeros(tmp_path):
     with out.open(newline="") as fh:
         row = next(csv.DictReader(fh))
     assert row["citations"] == "" and row["total"] == ""
+
+
+def test_cli_rollup_writes_the_rollup_file(tmp_path):
+    runs = tmp_path / "runs"
+    write_run(runs, _meta(), {"v1-Q1": "a"}, "t", {}, [_row("v1-Q1")])
+    out = tmp_path / "scores.csv"
+
+    exit_code = main(["rollup", "--runs", str(runs), "--out", str(out)])
+
+    assert exit_code == 0
+    with out.open(newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 1
+    assert rows[0]["question_id"] == "v1-Q1"
+
+
+def test_cli_rollup_check_passes_when_up_to_date(tmp_path, capsys):
+    runs = tmp_path / "runs"
+    write_run(runs, _meta(), {"v1-Q1": "a"}, "t", {}, [_row("v1-Q1")])
+    out = tmp_path / "scores.csv"
+    regenerate_rollup(runs, out)
+    before = out.read_text()
+
+    exit_code = main(["rollup", "--runs", str(runs), "--out", str(out), "--check"])
+
+    assert exit_code == 0
+    assert "up to date" in capsys.readouterr().out
+    assert out.read_text() == before, "--check must not rewrite the file"
+
+
+def test_cli_rollup_check_fails_and_reports_the_diff_when_stale(tmp_path, capsys):
+    runs = tmp_path / "runs"
+    write_run(runs, _meta(), {"v1-Q1": "a"}, "t", {}, [_row("v1-Q1")])
+    out = tmp_path / "scores.csv"
+    regenerate_rollup(runs, out)
+    stale = out.read_text()
+
+    # A second, later run lands after the committed rollup was generated.
+    write_run(runs, _meta(run_id="2026-08-01_0900_quick_v1",
+                          finished_at=datetime(2026, 8, 1, 9, 0)),
+              {"v1-Q1": "b"}, "t", {}, [_row("v1-Q1")])
+
+    exit_code = main(["rollup", "--runs", str(runs), "--out", str(out), "--check"])
+
+    assert exit_code == 1
+    out_text = capsys.readouterr().out
+    assert "out of date" in out_text
+    assert "2026-08-01" in out_text, "the diff must show what changed"
+    assert out.read_text() == stale, "--check must not rewrite the committed file"

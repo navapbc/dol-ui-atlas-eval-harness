@@ -129,6 +129,41 @@ def _cmd_review_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rollup(args: argparse.Namespace) -> int:
+    import difflib
+    import tempfile
+
+    from atlas_eval.runs import regenerate_rollup
+
+    runs_dir = Path(args.runs)
+    out_path = Path(args.out)
+
+    if args.check:
+        with tempfile.TemporaryDirectory() as tmp:
+            fresh_path = Path(tmp) / out_path.name
+            regenerate_rollup(runs_dir, fresh_path)
+            fresh = fresh_path.read_text(encoding="utf-8")
+        current = out_path.read_text(encoding="utf-8") if out_path.exists() else ""
+        if fresh == current:
+            print(f"{out_path} is up to date with {runs_dir}.")
+            return 0
+        print(f"{out_path} is out of date with {runs_dir}; it would change:\n")
+        diff = difflib.unified_diff(
+            current.splitlines(keepends=True),
+            fresh.splitlines(keepends=True),
+            fromfile=str(out_path),
+            tofile="regenerated",
+        )
+        print("".join(diff))
+        print(f"\nrun `atlas-eval rollup --runs {runs_dir} --out {out_path}` "
+              "and commit the result.")
+        return 1
+
+    n = regenerate_rollup(runs_dir, out_path)
+    print(f"regenerated {out_path} from {n} complete run(s)")
+    return 0
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from atlas_eval.report import BankNotFoundError, IncompleteRunError, build_report, format_report
 
@@ -189,6 +224,15 @@ def main(argv: list[str] | None = None) -> int:
     p_imp.add_argument("--date", help="review date, YYYY-MM-DD; defaults to today")
     p_imp.add_argument("--dry-run", action="store_true")
     p_imp.set_defaults(func=_cmd_review_import)
+
+    p_rollup = sub.add_parser("rollup", help="regenerate data/scores.csv from data/runs")
+    p_rollup.add_argument("--runs", default="data/runs")
+    p_rollup.add_argument("--out", default="data/scores.csv")
+    p_rollup.add_argument(
+        "--check", action="store_true",
+        help="regenerate in memory and fail if the committed file would differ",
+    )
+    p_rollup.set_defaults(func=_cmd_rollup)
 
     p_rep = sub.add_parser("report", help="verified and exploratory scores per run")
     p_rep.add_argument("--run", help="a single run directory; default is all runs")
