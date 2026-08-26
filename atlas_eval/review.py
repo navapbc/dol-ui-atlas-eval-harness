@@ -44,6 +44,19 @@ _TRACKING_WIDTHS = (12, 8, 26, 34, 26, 26, 22, 30, 15, 16)
 
 _LINE_HEIGHT = 15.0  # points; openpyxl/Excel's default single-line row height.
 
+# Excel format limit, not a stylistic choice: 409pt is the hard ceiling on
+# row height in the XLSX file format. openpyxl will happily write a larger
+# `ht` attribute, but Excel silently clamps to 409pt when the file is
+# opened, which reintroduces clipping if we don't clamp first ourselves.
+# A single-paragraph cell needs roughly 2400+ characters (at these column
+# widths) to hit this ceiling; there is no way to show that much text in one
+# visible row at any legal height. The stored value is never truncated, so
+# the reviewer can still see the full text via the formula bar or by
+# widening the row manually; a clamped row is a strict improvement over the
+# unbounded height, which Excel would have clamped anyway while also
+# clipping the last visible line.
+EXCEL_MAX_ROW_HEIGHT = 409.0
+
 
 def _joined(values: list[str]) -> str:
     return "; ".join(values)
@@ -87,7 +100,7 @@ def _tracking_row(bank: Bank, q: Question) -> list[str]:
     ]
 
 
-def _style(ws, columns: tuple[str, ...], widths: tuple[int, ...]) -> None:
+def _style(ws, widths: tuple[int, ...]) -> None:
     for cell in ws[1]:
         cell.font = Font(bold=True)
     ws.freeze_panes = "A2"
@@ -99,7 +112,8 @@ def _style(ws, columns: tuple[str, ...], widths: tuple[int, ...]) -> None:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
             if cell.value:
                 max_lines = max(max_lines, _wrapped_lines(str(cell.value), width))
-        ws.row_dimensions[row[0].row].height = max_lines * _LINE_HEIGHT
+        height = min(max_lines * _LINE_HEIGHT, EXCEL_MAX_ROW_HEIGHT)
+        ws.row_dimensions[row[0].row].height = height
 
 
 def export_review(
@@ -124,8 +138,8 @@ def export_review(
             tracking.append(_tracking_row(bank, q))
             exported += 1
 
-    _style(review, REVIEW_COLUMNS, _REVIEW_WIDTHS)
-    _style(tracking, TRACKING_COLUMNS, _TRACKING_WIDTHS)
+    _style(review, _REVIEW_WIDTHS)
+    _style(tracking, _TRACKING_WIDTHS)
 
     if exported:
         col = get_column_letter(REVIEW_COLUMNS.index("accurate?") + 1)

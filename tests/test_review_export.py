@@ -7,8 +7,8 @@ from atlas_eval.models import (
     Bank, Checks, Question, QuestionType, Stance, Verification, VerificationStatus,
 )
 from atlas_eval.review import (
-    ACCURATE_CHOICES, REVIEW_COLUMNS, REVIEW_SHEET, TRACKING_COLUMNS, TRACKING_SHEET,
-    export_review,
+    ACCURATE_CHOICES, EXCEL_MAX_ROW_HEIGHT, REVIEW_COLUMNS, REVIEW_SHEET, TRACKING_COLUMNS,
+    TRACKING_SHEET, export_review,
 )
 
 
@@ -116,3 +116,58 @@ def test_export_of_empty_selection_still_writes_headers(tmp_path):
 
 def test_accurate_choices_are_the_three_documented_values():
     assert ACCURATE_CHOICES == ("yes", "no", "unsure")
+
+
+def test_verified_question_maps_to_accurate_yes(tmp_path):
+    q = _q("v3-Q5", verification=Verification(
+        status=VerificationStatus.VERIFIED, verified_by="Priya", verified_on=date(2026, 8, 26)))
+    out = tmp_path / "review.xlsx"
+    export_review([_bank(q)], out)
+    review = load_workbook(out)[REVIEW_SHEET]
+    row = {k: v for k, v in zip(REVIEW_COLUMNS, [c.value for c in review[2]])}
+    assert row["accurate?"] == "yes"
+    assert row["reviewer"] == "Priya"
+
+
+def test_needs_sme_question_maps_to_accurate_unsure(tmp_path):
+    q = _q("v3-Q6", verification=Verification(
+        status=VerificationStatus.NEEDS_SME, verified_by="Priya", verified_on=date(2026, 8, 26)))
+    out = tmp_path / "review.xlsx"
+    export_review([_bank(q)], out)
+    review = load_workbook(out)[REVIEW_SHEET]
+    row = {k: v for k, v in zip(REVIEW_COLUMNS, [c.value for c in review[2]])}
+    assert row["accurate?"] == "unsure"
+    assert row["reviewer"] == "Priya"
+
+
+def test_short_cell_gets_the_default_single_line_height(tmp_path):
+    out = tmp_path / "review.xlsx"
+    export_review([_bank(_q("v3-Q1", ground_truth="Short answer."))], out)
+    review = load_workbook(out)[REVIEW_SHEET]
+    assert review.row_dimensions[2].height == pytest.approx(15.0)
+
+
+def test_long_single_paragraph_cell_grows_but_stays_under_excel_cap(tmp_path):
+    out = tmp_path / "review.xlsx"
+    export_review([_bank(_q("v3-Q1", ground_truth="x" * 1000))], out)
+    review = load_workbook(out)[REVIEW_SHEET]
+    height = review.row_dimensions[2].height
+    assert 15.0 < height < EXCEL_MAX_ROW_HEIGHT
+
+
+def test_worst_case_long_cell_is_clamped_to_excel_max_row_height(tmp_path):
+    out = tmp_path / "review.xlsx"
+    # The longest real ground-truth cell observed: computes to 600pt
+    # unclamped, which Excel itself would silently clamp (with clipping) on
+    # open. We clamp first, deliberately, to exactly 409pt.
+    export_review([_bank(_q("v3-Q1", ground_truth="x" * 3477))], out)
+    review = load_workbook(out)[REVIEW_SHEET]
+    assert review.row_dimensions[2].height == EXCEL_MAX_ROW_HEIGHT
+
+
+def test_many_newline_cell_is_clamped_not_left_unbounded(tmp_path):
+    out = tmp_path / "review.xlsx"
+    # 100 short newline-joined lines computes to 1500pt unclamped.
+    export_review([_bank(_q("v3-Q1", ground_truth="\n".join("line" for _ in range(100))))], out)
+    review = load_workbook(out)[REVIEW_SHEET]
+    assert review.row_dimensions[2].height == EXCEL_MAX_ROW_HEIGHT
