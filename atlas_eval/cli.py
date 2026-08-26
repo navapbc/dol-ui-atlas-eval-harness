@@ -71,6 +71,30 @@ def _cmd_freeze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_review_export(args: argparse.Namespace) -> int:
+    from atlas_eval.models import VerificationStatus
+    from atlas_eval.review import export_review
+
+    banks = load_all_banks(Path(args.banks))
+    if args.bank:
+        banks = [b for b in banks if b.version == args.bank]
+        if not banks:
+            print(f"error: no bank named {args.bank}")
+            return 2
+
+    statuses = None
+    if args.status:
+        try:
+            statuses = {VerificationStatus(s) for s in args.status}
+        except ValueError as err:
+            print(f"error: {err}")
+            return 2
+
+    n = export_review(banks, Path(args.out), statuses)
+    print(f"exported {n} question(s) to {args.out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas-eval")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -83,6 +107,17 @@ def main(argv: list[str] | None = None) -> int:
     p_freeze.add_argument("--bank", required=True)
     p_freeze.add_argument("--date", required=True, help="freeze date, YYYY-MM-DD")
     p_freeze.set_defaults(func=_cmd_freeze)
+
+    p_review = sub.add_parser("review", help="SME review round trip")
+    review_sub = p_review.add_subparsers(dest="review_command", required=True)
+
+    p_exp = review_sub.add_parser("export", help="write the review workbook")
+    p_exp.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_exp.add_argument("--bank", help="limit to one bank version, e.g. v3")
+    p_exp.add_argument("--status", nargs="*",
+                       help="filter by verification status, e.g. unverified needs-sme")
+    p_exp.add_argument("-o", "--out", required=True)
+    p_exp.set_defaults(func=_cmd_review_export)
 
     args = parser.parse_args(argv)
     return args.func(args)
