@@ -28,10 +28,14 @@ These are not preferences; they are fixed facts the design has to absorb.
    Quick arm is permanently asymmetric with the others in transport, and must not be
    asymmetric in anything else.
 
-2. **No AI grades AI.** Per the 2026-08-26 sync, an LLM must never produce or confirm a
-   score. Ground truth is human-verified; scoring is either deterministic string/concept
-   matching or a human filling a rubric. This rules out an LLM judge entirely, including
-   as a convenience for drafting scores.
+2. **Ground truth must be human-verified.** The 2026-08-26 sync's "can't use AI to
+   confirm AI" applies to the *question and answer sets*: they were produced with AI
+   assistance and have not had SME review. An AI-written answer key cannot be validated
+   by AI. Grading is a separate matter: the existing Quick Chat Audit process, where an
+   LLM drafts rubric scores against the answer key and a human confirms them, continues
+   as-is. Every rubric score therefore records who or what produced it and whether a
+   human confirmed it, so a report can be restricted to human-confirmed scores whenever
+   that is what defensibility requires.
 
 3. **Ground truth is not yet vetted.** The current banks were built by Michael, partly
    sourced from Oscar, and never verified. Some questions have no known correct answer
@@ -187,7 +191,10 @@ questions:
   verified: Oscar-verified questions are added incrementally, and kick-screens questions
   wait on Morgan's Transform work. `rejected` is first-class and retains the question and
   the reason rather than deleting it, so a question with no knowable answer is not
-  re-litigated next round.
+  re-litigated next round. This block is where the "can't use AI to confirm AI" constraint
+  actually lives: the ground truth was AI-assisted, so `verified` means a human SME signed
+  off on it. An SME session is scheduled for Friday 2026-08-28 to begin working through
+  the backlog.
 
 ### Reporting on a partly verified bank
 
@@ -214,13 +221,27 @@ Matching is case-insensitive and whitespace-normalized. It is plain substring an
 matching, not semantic similarity, because a scorer whose behavior can shift is a scorer
 that silently rewrites history.
 
-**Human rubric layer**, carried over unchanged from the existing `scores.csv`: `citations`,
+**Rubric layer**, carried over unchanged from the existing `scores.csv`: `citations`,
 `correctness`, `gap_honesty`, `scope_discipline`, `clarity`, each 0-2, `total` out of 10,
-plus a free-text `notes`. Filled by a human only. No tooling ever writes a rubric value.
+plus a free-text `notes`.
+
+The rubric is filled by the current audit process: an LLM drafts the scores against the
+answer key and a human reviews them. Two provenance fields make that auditable rather
+than implicit:
+
+- `scored_by` — who or what produced the values (a model id such as `claude-opus-5`, or a
+  person's name for a hand-scored row).
+- `confirmed_by` — the person who reviewed them, or null if nobody has yet.
+
+Reports can then be filtered to `confirmed_by` being set. This keeps the honest
+distinction the sync was reaching for, without discarding a working process: an
+unconfirmed LLM-drafted score is a useful signal and a legitimate intermediate state, it
+just is not the same artifact as a human-confirmed one.
 
 Keeping both layers matters: the deterministic layer gives cross-model comparability and
 catches regression mechanically, while the rubric captures the judgment the deterministic
 checks cannot, which for this corpus is mostly scope discipline and honesty about gaps.
+Moving toward more deterministic coverage over time is the direction, not a precondition.
 
 ## Backend adapter interface
 
