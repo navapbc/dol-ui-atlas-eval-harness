@@ -1,0 +1,160 @@
+{
+  "agent": {
+    "Agent": {
+      "ActionConnectors": [],
+      "AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
+      "AgentLifecycle": "PUBLISHED",
+      "AgentStatus": "ACTIVE",
+      "Arn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:agent/093ac4e3-0712-481e-af95-9ddc5e4fc734",
+      "CreatedAt": "2026-06-10T18:19:25.328000-04:00",
+      "Creator": "arn:aws:ds:us-east-1:<ACCOUNT-ID>:federated/iam/<ROLE-ID>:<EMAIL>",
+      "CustomPromptInterface": {
+        "CustomInstructions": "<p>You are the LOOPS Engineering Onboarding Specialist, helping engineers, business</p><p>analysts, and SMEs understand the NJ DOL LOOPS system (the mainframe Loans, Offsets,</p><p>Overpayments and Payments System for Unemployment Insurance): its modules, business</p><p>rules, batch flows, programs, and data stores.</p><p>YOUR JOB</p><p>When a user asks a question: 1) Search the connected knowledge spaces (Weekly</p><p>Certification, CWC, DailyUI, NewHire, WGPM, Daily CA-7, Monthly CA-7) for relevant</p><p>source code and analysis documents, 2) Explain architecture, batch flow, and system dependencies clearly, with</p><p>diagrams when available, 3) Provide step-by-step procedures where the knowledge base</p><p>documents them, 4) Always cite the specific program, copybook, or document you drew</p><p>from (for example \"DXCBDA2R.cbl.md\", \"T120TABL.cpy\") and, when relevant, which space</p><p>it came from. Use code formatting for program names, JCL, and commands. Match the</p><p>audience: plain language for process questions, precise program/file references for</p><p>technical ones.</p><p>GROUNDING RULES</p><p>- Distinguish what is documented from what is inferred. Process structure, file</p><p>  inventories, and program roles read directly from source are well-grounded.</p><p>  Arithmetic and formulas reconstructed from source code are INFERENCES: never present</p><p>  them as \"exact.\" Label them as derived-from-source and recommend confirming with a</p><p>  subject-matter expert or by reading the program logic directly. Known examples: the</p><p>  partial-benefit earnings formula and WBR calculation (DXCD037S), earnings/pension</p><p>  offset arithmetic, and disqualification/hold rules.</p><p>- Some data lives outside the knowledge base entirely: the populated T120 table values</p><p>  (the copybook T120TABL.cpy defines only the layout; the values are operations-</p><p>  maintained in the CODELOOP VSAM dataset), and the code-promotion / deployment /</p><p>  change-management process. Say plainly when the answer lives outside the KB and</p><p>  point to where it would live.</p><p>- When you answer an end-to-end process question from a single program's documentation,</p><p>  say so explicitly (\"this describes the extract/report step, program X; upstream and</p><p>  downstream steps are covered in ...\") rather than presenting one program as the whole</p><p>  process.</p><p>- If you synthesize a summary (a decision flow, a comparison table) from multiple</p><p>  sources, label it as synthesized.</p><p>- Do not invent programs, rules, field values, or formulas. If a program or document is</p><p>  not in the knowledge base, say so; you may offer LOOPS naming conventions (DXCB* batch,</p><p>  DXCD*S CICS, UIM* subprograms, BC* base-claim, L2* JCL jobs) to help the user check</p><p>  for a typo.</p><p>SCOPE</p><p>- The knowledge spaces cover selected LOOPS modules, not the whole system. Real-time</p><p>  capture (IVR, CICS web) and money movement (check print, direct deposit, Treasury)</p><p>  are related but separately documented. Start from the LOOPS Engineering Overview</p><p>  document for orientation and pointers.</p><p></p>",
+        "ModelProfileId": "49fed7dd-be3b-4934-bbcd-a41877e84e12",
+        "QbsAwsAccountId": "QBS<ACCOUNT-ID>",
+        "SubscriptionId": "c505e1f6db6d069715425a54bfed5825",
+        "promptSummary": "Serve as a technical LOOPS system specialist who provides precise, well-grounded explanations of mainframe architecture and processes while clearly distinguishing documented facts from inferences and always citing specific source programs."
+      },
+      "Description": "Help engineers learn your systems, architecture, and development processes with instant access to technical documentation and runbooks.",
+      "IconId": "id_agent_icon_ai",
+      "Name": "Engineering Onboarding Specialist",
+      "Spaces": [
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/17d605ba-346f-4e9d-a356-1b63ecd6437e",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/f61e95d4-1302-4ae1-aa48-da1e4139239d",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/fcc05e6e-69c8-471a-8a4f-dd73ccc87c4a",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1191ae1e-ae56-4c68-a0b6-c88c1387c4b7",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/747813cc-02f5-476f-aa9e-e4df0f377c17",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/cf53a40a-b0f0-4c7d-9f7b-78a81870db0b",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1235e6a3-94b1-47f0-b974-43a758c33e5c"
+      ],
+      "StarterPrompts": [
+        "Walk through the weekly certification batch process end to end: which jobs and programs run?",
+        "What are the business rules for pay vs. no-pay outcomes on a certified week?",
+        "Explain the Combined Wage Claim (CWC) process and which programs are involved."
+      ],
+      "UpdatedAt": "2026-07-28T14:53:47.789000-04:00",
+      "WelcomeMessage": "Welcome to Engineering Onboarding! I'm here to help you understand our systems, architecture, and development processes. Ask me about deployments, architecture, coding standards, or troubleshooting."
+    },
+    "RequestId": "f744b172-4120-47ae-97fe-d4ea58d79bd8"
+  },
+  "spaces": {
+    "RequestId": "bbaffbc3-2a40-4784-8615-f8fd0e804fe6",
+    "SpaceSummaries": [
+      {
+        "consumedSourceDocCount": 28,
+        "consumedSourceSize": 29173542,
+        "createdAt": "2026-03-20T12:24:48.891000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - DailyUI",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/17d605ba-346f-4e9d-a356-1b63ecd6437e",
+        "spaceId": "17d605ba-346f-4e9d-a356-1b63ecd6437e",
+        "updatedAt": "2026-07-24T11:42:17.861000-04:00"
+      },
+      {
+        "createdAt": "2026-06-01T11:43:13.820000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/Oscar.Ramirez@DOL.NJ.GOV",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/Oscar.Ramirez@DOL.NJ.GOV",
+        "description": "",
+        "name": "Untitled",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/92ed53d9-3de8-48f0-9695-1e276faad908",
+        "spaceId": "92ed53d9-3de8-48f0-9695-1e276faad908",
+        "updatedAt": "2026-06-01T11:43:13.820000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 127,
+        "consumedSourceSize": 6326548,
+        "createdAt": "2026-06-18T14:18:49.012000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "Weekly Certification Assistant",
+        "name": "LOOPS - Weekly Certification",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/747813cc-02f5-476f-aa9e-e4df0f377c17",
+        "spaceId": "747813cc-02f5-476f-aa9e-e4df0f377c17",
+        "updatedAt": "2026-07-24T11:42:28.776000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 26,
+        "consumedSourceSize": 58950105,
+        "createdAt": "2026-06-18T16:43:19.822000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "This module is called after most CICS claimant interaction screens",
+        "name": "LOOPS_WGPM",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1191ae1e-ae56-4c68-a0b6-c88c1387c4b7",
+        "spaceId": "1191ae1e-ae56-4c68-a0b6-c88c1387c4b7",
+        "updatedAt": "2026-07-24T11:41:24.814000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 136,
+        "consumedSourceSize": 62157925,
+        "createdAt": "2026-06-18T16:45:20.107000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - CWC",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/fcc05e6e-69c8-471a-8a4f-dd73ccc87c4a",
+        "spaceId": "fcc05e6e-69c8-471a-8a4f-dd73ccc87c4a",
+        "updatedAt": "2026-07-24T11:41:09.080000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 31,
+        "consumedSourceSize": 29186102,
+        "createdAt": "2026-06-18T16:48:46.179000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - NewHire",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/f61e95d4-1302-4ae1-aa48-da1e4139239d",
+        "spaceId": "f61e95d4-1302-4ae1-aa48-da1e4139239d",
+        "updatedAt": "2026-07-24T11:41:17.579000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 0,
+        "consumedSourceSize": 0,
+        "createdAt": "2026-07-15T09:59:27.763000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - Daily CA-7",
+        "resourcesCount": 1,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1235e6a3-94b1-47f0-b974-43a758c33e5c",
+        "spaceId": "1235e6a3-94b1-47f0-b974-43a758c33e5c",
+        "updatedAt": "2026-07-24T11:41:01.199000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 11,
+        "consumedSourceSize": 8659138,
+        "createdAt": "2026-07-17T11:07:09.938000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - Monthly CA-7",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/cf53a40a-b0f0-4c7d-9f7b-78a81870db0b",
+        "spaceId": "cf53a40a-b0f0-4c7d-9f7b-78a81870db0b",
+        "updatedAt": "2026-07-24T11:42:09.650000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 3521,
+        "consumedSourceSize": 2539161859,
+        "createdAt": "2026-07-28T15:54:18.695000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "A different take on the CA-7 specific breakdown, but across some scheduled jobs (monthly, weekly, mostly daily)",
+        "name": "LOOPS - Daily Batch Summary",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/3dca729a-431f-4607-9bdf-40523cd50bc2",
+        "spaceId": "3dca729a-431f-4607-9bdf-40523cd50bc2",
+        "updatedAt": "2026-07-28T16:52:15.717000-04:00"
+      }
+    ]
+  }
+}

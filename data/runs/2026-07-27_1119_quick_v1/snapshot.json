@@ -1,0 +1,145 @@
+{
+  "agent": {
+    "Agent": {
+      "ActionConnectors": [],
+      "AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
+      "AgentLifecycle": "PUBLISHED",
+      "AgentStatus": "ACTIVE",
+      "Arn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:agent/093ac4e3-0712-481e-af95-9ddc5e4fc734",
+      "CreatedAt": "2026-06-10T18:19:25.328000-04:00",
+      "Creator": "arn:aws:ds:us-east-1:<ACCOUNT-ID>:federated/iam/<ROLE-ID>:<EMAIL>",
+      "CustomPromptInterface": {
+        "CustomInstructions": "<p>You are an engineering onboarding assistant that helps new engineers understand systems and processes. When a user asks technical questions: 1) Search connected spaces and knowledge bases for relevant documentation, 2) Explain architecture and system dependencies clearly with diagrams when available, 3) Provide step-by-step procedures for deployments and common tasks, 4) Reference coding standards and best practices with examples, 5) Share runbooks for troubleshooting common issues, 6) Always cite sources so users can access full documentation. Use code formatting for commands and technical examples.</p>",
+        "ModelProfileId": "c394c917-e855-4485-ba79-f96d9461d551",
+        "QbsAwsAccountId": "QBS<ACCOUNT-ID>",
+        "SubscriptionId": "c505e1f6db6d069715425a54bfed5825",
+        "promptSummary": "Act as a systematic engineering onboarding assistant who delivers clear technical explanations with structured procedures, citing documentation sources and using proper code formatting."
+      },
+      "Description": "Help engineers learn your systems, architecture, and development processes with instant access to technical documentation and runbooks.",
+      "IconId": "id_agent_icon_ai",
+      "Name": "Engineering Onboarding Specialist",
+      "Spaces": [
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/17d605ba-346f-4e9d-a356-1b63ecd6437e",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/f61e95d4-1302-4ae1-aa48-da1e4139239d",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/fcc05e6e-69c8-471a-8a4f-dd73ccc87c4a",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1191ae1e-ae56-4c68-a0b6-c88c1387c4b7",
+        "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/747813cc-02f5-476f-aa9e-e4df0f377c17"
+      ],
+      "StarterPrompts": [
+        "What's the deployment process for the production environment?",
+        "Explain our microservices architecture and service dependencies",
+        "What are the team's code review standards and approval process?"
+      ],
+      "UpdatedAt": "2026-07-24T11:40:19.384000-04:00",
+      "WelcomeMessage": "Welcome to Engineering Onboarding! I'm here to help you understand our systems, architecture, and development processes. Ask me about deployments, architecture, coding standards, or troubleshooting."
+    },
+    "RequestId": "bd29c98e-95f6-4b20-ab29-e13df3187ba5"
+  },
+  "spaces": {
+    "RequestId": "b7277db1-bc56-47c2-a94a-78c8b7e93304",
+    "SpaceSummaries": [
+      {
+        "consumedSourceDocCount": 28,
+        "consumedSourceSize": 29173542,
+        "createdAt": "2026-03-20T12:24:48.891000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - DailyUI",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/17d605ba-346f-4e9d-a356-1b63ecd6437e",
+        "spaceId": "17d605ba-346f-4e9d-a356-1b63ecd6437e",
+        "updatedAt": "2026-07-24T11:42:17.861000-04:00"
+      },
+      {
+        "createdAt": "2026-06-01T11:43:13.820000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/Oscar.Ramirez@DOL.NJ.GOV",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/Oscar.Ramirez@DOL.NJ.GOV",
+        "description": "",
+        "name": "Untitled",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/92ed53d9-3de8-48f0-9695-1e276faad908",
+        "spaceId": "92ed53d9-3de8-48f0-9695-1e276faad908",
+        "updatedAt": "2026-06-01T11:43:13.820000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 127,
+        "consumedSourceSize": 6326548,
+        "createdAt": "2026-06-18T14:18:49.012000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "Weekly Certification Assistant",
+        "name": "LOOPS - Weekly Certification",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/747813cc-02f5-476f-aa9e-e4df0f377c17",
+        "spaceId": "747813cc-02f5-476f-aa9e-e4df0f377c17",
+        "updatedAt": "2026-07-24T11:42:28.776000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 26,
+        "consumedSourceSize": 58950105,
+        "createdAt": "2026-06-18T16:43:19.822000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "This module is called after most CICS claimant interaction screens",
+        "name": "LOOPS_WGPM",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1191ae1e-ae56-4c68-a0b6-c88c1387c4b7",
+        "spaceId": "1191ae1e-ae56-4c68-a0b6-c88c1387c4b7",
+        "updatedAt": "2026-07-24T11:41:24.814000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 136,
+        "consumedSourceSize": 62157925,
+        "createdAt": "2026-06-18T16:45:20.107000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - CWC",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/fcc05e6e-69c8-471a-8a4f-dd73ccc87c4a",
+        "spaceId": "fcc05e6e-69c8-471a-8a4f-dd73ccc87c4a",
+        "updatedAt": "2026-07-24T11:41:09.080000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 31,
+        "consumedSourceSize": 29186102,
+        "createdAt": "2026-06-18T16:48:46.179000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - NewHire",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/f61e95d4-1302-4ae1-aa48-da1e4139239d",
+        "spaceId": "f61e95d4-1302-4ae1-aa48-da1e4139239d",
+        "updatedAt": "2026-07-24T11:41:17.579000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 0,
+        "consumedSourceSize": 0,
+        "createdAt": "2026-07-15T09:59:27.763000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - Daily CA-7",
+        "resourcesCount": 1,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/1235e6a3-94b1-47f0-b974-43a758c33e5c",
+        "spaceId": "1235e6a3-94b1-47f0-b974-43a758c33e5c",
+        "updatedAt": "2026-07-24T11:41:01.199000-04:00"
+      },
+      {
+        "consumedSourceDocCount": 11,
+        "consumedSourceSize": 8659138,
+        "createdAt": "2026-07-17T11:07:09.938000-04:00",
+        "createdBy": "AWSReservedSSO_<ROLE>/<EMAIL>",
+        "createdByArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:user/default/AWSReservedSSO_<ROLE>/<EMAIL>",
+        "description": "",
+        "name": "LOOPS - Monthly CA-7",
+        "resourcesCount": 0,
+        "spaceArn": "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:space/cf53a40a-b0f0-4c7d-9f7b-78a81870db0b",
+        "spaceId": "cf53a40a-b0f0-4c7d-9f7b-78a81870db0b",
+        "updatedAt": "2026-07-24T11:42:09.650000-04:00"
+      }
+    ]
+  }
+}

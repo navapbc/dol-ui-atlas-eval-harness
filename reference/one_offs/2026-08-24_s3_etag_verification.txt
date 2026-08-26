@@ -1,0 +1,14 @@
+S3 vs local verification
+date:   2026-08-24T18:12:28Z
+mirror: /Users/michaelangeli/projects/aws_transform_output/quick_space_ca7_daily_s3/s3
+target: s3://dol-dev2-transform-poc/quick-loops/kb_CA7_daily/
+caller: arn:aws:sts::<ACCOUNT-ID>:assumed-role/AWSReservedSSO_<ROLE>/<EMAIL>
+
+objects in S3:        4979
+objects local:        4979
+multipart ETags:  0
+
+--- in S3, not local ---
+--- local, not in S3 ---
+--- checksum mismatches (key: s3_etag local_md5) ---
+--- end ---

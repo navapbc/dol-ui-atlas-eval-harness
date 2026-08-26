@@ -1,0 +1,16 @@
+run_id: 2026-08-12_1511_quick_v1
+backend: quick
+transport: legacy
+bank_version: v1
+question_sha256: legacy-unknown
+agent: Engineering Onboarding Specialist
+agent_id: 093ac4e3-0712-481e-af95-9ddc5e4fc734
+conversation_id: 1f352d59-regression
+started_at: '2026-08-12T15:11:00'
+finished_at: '2026-08-12T15:11:00'
+harness_git_sha:
+status: complete
+# NOTE: transcript.md and snapshot.json for this run were borrowed from
+# stamp 2026-08-12_1527 (chats/2026-08-12_1527_engineering_onboarding_specialist.md), which documents
+# multiple scored runs from one sitting. See SHARED_TRANSCRIPT_STAMPS in
+# atlas_eval/migrate/runs.py for the evidence. This run's own stamp is 2026-08-12_1511.

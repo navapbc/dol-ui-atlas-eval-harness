@@ -1,0 +1,12 @@
+run_id: 2026-08-03_1615_quick_v1
+backend: quick
+transport: legacy
+bank_version: v1
+question_sha256: legacy-unknown
+agent: Engineering Onboarding Specialist
+agent_id: 093ac4e3-0712-481e-af95-9ddc5e4fc734
+conversation_id: 5611a2c5-cb6c-4408-8f2b-d34c97b8bf8d
+started_at: '2026-08-03T16:15:00'
+finished_at: '2026-08-03T16:15:00'
+harness_git_sha:
+status: complete
