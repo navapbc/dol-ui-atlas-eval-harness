@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import ValidationError
 from ruamel.yaml import YAML
 
-from atlas_eval.models import Bank
+from atlas_eval.models import Bank, Question
 
 _WS = re.compile(r"\s+")
 
@@ -100,3 +100,73 @@ def _version_key(version: str) -> tuple[int, str]:
 def load_all_banks(banks_dir: Path) -> list[Bank]:
     banks = [load_bank(p) for p in sorted(banks_dir.glob("*.yaml"))]
     return sorted(banks, key=lambda b: _version_key(b.version))
+
+
+class RunOrderError(Exception):
+    """The `after` graph cannot be resolved into a single run sequence."""
+
+    def __init__(self, code: str, question_ids: list[str], detail: str) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code = code
+        self.question_ids = question_ids
+
+
+def resolve_run_order(bank: Bank) -> list[Question]:
+    """Order questions so each `after` question runs immediately after its target.
+
+    Questions without `after` keep file order. A dependent question is spliced
+    in directly behind its target, and chains stay contiguous.
+    """
+    by_id = {q.id: q for q in bank.questions}
+
+    dangling = [q.id for q in bank.questions if q.after and q.after not in by_id]
+    if dangling:
+        raise RunOrderError(
+            "AFTER_DANGLING", dangling,
+            f"`after` target not in bank: {', '.join(sorted(dangling))}",
+        )
+
+    successors: dict[str, list[str]] = {}
+    for q in bank.questions:
+        if q.after:
+            successors.setdefault(q.after, []).append(q.id)
+
+    ambiguous = sorted(i for ids in successors.values() if len(ids) > 1 for i in ids)
+    if ambiguous:
+        raise RunOrderError(
+            "AFTER_AMBIGUOUS", ambiguous,
+            "multiple questions declare the same `after` target, so "
+            f"'immediately after' is unsatisfiable: {', '.join(ambiguous)}",
+        )
+
+    # Walk each `after` link to its root; a walk that revisits a node is a cycle.
+    for q in bank.questions:
+        seen, cur = [], q
+        while cur.after:
+            seen.append(cur.id)
+            cur = by_id[cur.after]
+            if cur.id in seen:
+                raise RunOrderError(
+                    "AFTER_CYCLE", sorted(set(seen + [cur.id])),
+                    f"`after` cycle through {' -> '.join(seen + [cur.id])}",
+                )
+
+    ordered: list[Question] = []
+    for q in bank.questions:
+        if q.after:
+            continue
+        ordered.append(q)
+        chain = successors.get(q.id, [])
+        while chain:
+            nxt = by_id[chain[0]]
+            ordered.append(nxt)
+            chain = successors.get(nxt.id, [])
+
+    if len(ordered) != len(bank.questions):
+        placed = {q.id for q in ordered}
+        missing = sorted(set(by_id) - placed)
+        raise RunOrderError(
+            "AFTER_CYCLE", missing,
+            f"questions unreachable from any root, indicating a cycle: {', '.join(missing)}",
+        )
+    return ordered
