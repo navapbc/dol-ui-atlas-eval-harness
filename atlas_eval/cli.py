@@ -116,6 +116,26 @@ def _cmd_review_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    from atlas_eval.report import build_report, format_report
+
+    run_dirs = (
+        [Path(args.run)] if args.run
+        else sorted(p for p in Path(args.runs).glob("*") if p.is_dir())
+    )
+    shown = 0
+    for run_dir in run_dirs:
+        try:
+            print(format_report(build_report(run_dir, Path(args.banks))))
+            shown += 1
+        except ValueError as err:
+            print(f"{run_dir.name}: skipped: {err}")
+    if not shown:
+        print("no complete runs to report")
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas-eval")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -146,6 +166,12 @@ def main(argv: list[str] | None = None) -> int:
     p_imp.add_argument("--date", help="review date, YYYY-MM-DD; defaults to today")
     p_imp.add_argument("--dry-run", action="store_true")
     p_imp.set_defaults(func=_cmd_review_import)
+
+    p_rep = sub.add_parser("report", help="verified and exploratory scores per run")
+    p_rep.add_argument("--run", help="a single run directory; default is all runs")
+    p_rep.add_argument("--runs", default="data/runs")
+    p_rep.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_rep.set_defaults(func=_cmd_report)
 
     args = parser.parse_args(argv)
     return args.func(args)
