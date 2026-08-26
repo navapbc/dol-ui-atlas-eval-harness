@@ -392,6 +392,51 @@ Unit tests cover:
 Fixtures live in `tests/fixtures/`: a small synthetic bank and one real captured
 transcript. Playwright selector logic is tested against saved HTML, not a live session.
 
+## Sequencing and de-risking
+
+The least predictable work is Playwright's grip on Quick's chat UI, and specifically
+answer-completion detection on a streaming response. That uncertainty is resolved early
+rather than deferred, because it is the one item that can invalidate the automated
+transport entirely.
+
+**Step 0, before the transport is written: a reconnaissance spike.** Open the Quick chat
+agent in a headed browser and capture what the harness will have to grip:
+
+- The message-input element and its submit affordance.
+- The message-list container and the per-message boundary for a single agent turn.
+- The streaming-in-progress signal (a stop button, a spinner, a busy attribute, or the
+  absence of a completion marker) and whichever of those actually flips reliably when a
+  long multi-paragraph answer finishes. Answers to these banks run long, so completion
+  must be verified against a real lengthy response, not a one-line reply.
+- Whether a conversation's turns remain addressable after the thread scrolls, since
+  `after` dependencies require reading earlier answers in the same conversation.
+- How `conversation_id` surfaces in the DOM or the network traffic, since the existing
+  `scores.csv` records it per run.
+
+The spike's deliverable is saved HTML of a real completed conversation, committed to
+`tests/fixtures/`, plus a short findings note. Those fixtures are what the selector and
+completion-detection tests run against, so the tests never need a live session.
+
+The spike also settles a question the design cannot settle on paper: whether Quick's
+completion signal is reliable enough to trust unattended. If it is not, the automated
+transport gains an explicit per-question settle-and-confirm step, or the `paste` transport
+becomes primary. Either outcome is cheap to absorb at step 0 and expensive to absorb after
+the runner is built around an assumption.
+
+Build order:
+
+1. Playwright reconnaissance spike; commit DOM fixtures and findings.
+2. Dataset layer: schema, loader, freeze hashing, run-order resolution, `validate`.
+3. Scoring, tested against the fixtures and the 27 existing transcripts.
+4. Migration of the six banks and five answer keys.
+5. Review export/import round trip.
+6. Quick adapter: `paste` transport first (immediately usable, no selector risk), then
+   `playwright` against the step-1 fixtures.
+7. Run record and rollup generation.
+
+Steps 2 through 5 depend on nothing external, so they proceed regardless of what the spike
+finds.
+
 ## Open questions
 
 None blocking. Two to settle during implementation:
@@ -402,3 +447,5 @@ None blocking. Two to settle during implementation:
 2. The exact `type` mapping for the 30 legacy free-text labels. Proposed enum covers all
    observed cases, but the mapping table is written during migration and reviewed then,
    with `type_note` preserving the original either way.
+3. Whether Quick's streaming-completion signal is reliable enough for unattended runs.
+   Resolved by the step-0 reconnaissance spike, not by further design.
