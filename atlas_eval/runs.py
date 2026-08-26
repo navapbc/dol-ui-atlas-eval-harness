@@ -11,7 +11,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -130,6 +129,13 @@ def _row_cells(meta: RunMeta, row: ScoreRow) -> dict[str, object]:
             "present_forbidden": _joined(d.present_forbidden),
             "missing_citations": _joined(d.missing_citations),
         })
+    # A backend that adds a rollup column but forgets to populate it here
+    # would otherwise emit an empty cell for that column forever, silently:
+    # csv.DictWriter fills any fieldname absent from the mapping with "".
+    assert set(cells) == set(ROLLUP_COLUMNS), (
+        f"_row_cells produced {sorted(set(cells) - set(ROLLUP_COLUMNS))} "
+        f"extra and is missing {sorted(set(ROLLUP_COLUMNS) - set(cells))}"
+    )
     return cells
 
 
@@ -169,6 +175,16 @@ def write_run(
 
 
 def read_run(run_dir: Path) -> tuple[RunMeta, dict[str, str], list[ScoreRow]]:
+    """Read back a run directory written by write_run.
+
+    This is a deliberately lossy read: scores.csv has no column for
+    DeterministicScore's missing_required/present_forbidden/missing_citations
+    detail lists (only their joined summary strings), so every returned
+    ScoreRow.deterministic is None regardless of what was originally scored.
+    report.py needs that detail and therefore re-parses scores.csv itself
+    rather than going through this function; keep that in mind before adding
+    a second caller that expects deterministic to be populated here.
+    """
     with (run_dir / "run.yaml").open(encoding="utf-8") as fh:
         meta = RunMeta(**_plain(_yaml.load(fh)))
 

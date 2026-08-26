@@ -90,6 +90,11 @@ def score_answer(
     Stance cannot be inferred from text without a model, and models are barred
     from scoring, so an unobserved stance yields stance_pass=None and does not
     fail deterministic_pass.
+
+    deterministic_pass also requires citation_recall == 1.0 (FULL): every
+    expected citation must be found, not merely most of them. A partial hit
+    on expect_citations fails deterministic_pass exactly like a missing
+    required_all term does.
     """
     hay = normalize_ws(answer)
     checks = question.checks

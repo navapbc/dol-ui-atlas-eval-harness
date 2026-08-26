@@ -60,10 +60,11 @@ def validate_bank(bank: Bank, source: str) -> list[Issue]:
                 Issue(source, q.id, "ID_PREFIX_MISMATCH",
                       f"id does not start with '{prefix}'")
             )
-        if _MALFORMED_ID.search(q.id):
+        match = _MALFORMED_ID.search(q.id)
+        if match:
             issues.append(
                 Issue(source, q.id, "ID_MALFORMED",
-                      "id contains whitespace or a control character")
+                      f"id contains whitespace or a control character: {match.group()!r}")
             )
 
     if bank.frozen_on is not None:

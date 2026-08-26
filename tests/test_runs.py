@@ -1,8 +1,6 @@
 import csv
 from datetime import datetime
 
-import pytest
-
 from atlas_eval.cli import main
 from atlas_eval.models import Checks, Question, QuestionType, Stance
 from atlas_eval.runs import (
