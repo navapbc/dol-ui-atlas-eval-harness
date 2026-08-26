@@ -146,7 +146,7 @@ def test_deterministic_partial_scoring_reports_against_scored_count(tmp_path):
     text = format_report(rep)
     # The denominator must be the scored count, and the partial coverage
     # must be stated explicitly so it can't be mistaken for the full subset.
-    assert "deterministic 1/1 scored (2 total)" in text
+    assert "deterministic 1/1 scored, 1 unscored" in text
     assert "deterministic 1/2" not in text
 
 

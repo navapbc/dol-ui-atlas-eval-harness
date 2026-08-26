@@ -111,10 +111,11 @@ def _deterministic_text(s: Subset) -> str:
         return "deterministic n/a"
     if s.deterministic_scored == s.question_count:
         return f"deterministic {s.deterministic_pass}/{s.question_count}"
-    # Partial scoring: report against the scored count, and say so explicitly,
-    # so the denominator is never mistaken for the full subset.
-    return (f"deterministic {s.deterministic_pass}/{s.deterministic_scored} scored"
-            f" ({s.question_count} total)")
+    # Partial scoring: name both halves rather than implying one by subtraction.
+    # "2/3 scored (8 total)" invites reading "2 of 3 questions"; spelling out the
+    # unscored count removes the arithmetic and the ambiguity with it.
+    return (f"deterministic {s.deterministic_pass}/{s.deterministic_scored} scored,"
+            f" {s.question_count - s.deterministic_scored} unscored")
 
 
 def _line(s: Subset) -> str:
