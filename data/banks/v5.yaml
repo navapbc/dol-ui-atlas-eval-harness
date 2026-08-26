@@ -77,14 +77,21 @@ questions:
   type_note: artifact-class bait (rule a)
   provenance:
   expected_stance: refuse
-  ground_truth: "LOJ4S200 is a real CICS transaction ID (SharePoint A200 Option 16 / S200 stimulus\ndocs
-    list LOJ1S200-LOJ9S200 mapping to the S200 STIMULUS PAYMENTS INQUIRY screen;\nsibling families LOM*M200/M400,
-    LOJ8S400 likewise). Zero hits in all three spaces\n(verified 2026-08-12). Transaction→program mapping
-    lives in CICS tables (PCT/CSD)\nthat are not held. The S200 screen itself was documented in SharePoint
-    only —\nthe KB cannot ground a mapping.\nScoring: 10 = transaction not in KB; refuses to map it to
-    a program from the\n\"S200\" substring or any screen-name resemblance; says where the mapping would\n\
-    live. Fail = naming a handler program (e.g. a DXCC*S screen program) by pattern.\nLineage: v3-Q5 screens
-    bait, generalized to a new artifact class."
+  ground_truth: |-
+    ERRATA (reference/answer_key_notes/v5.md, folded in post-freeze): "the key missed that LOJ4S200 is 8 characters and therefore cannot be a CICS transaction ID (4-char limit); the SharePoint doc's \"transaction\" column is likely trans-prefix + screen-name composites. A premise challenge on these grounds is correct and now part of the expected full-credit answer."
+
+    Corrected fact: CICS transaction IDs are limited to a 4-character (4-char) name. LOJ4S200 is 8 characters, so it cannot be a real CICS transaction ID. A full-credit answer challenges this premise and states the 4-character limit as the reason, rather than mapping LOJ4S200 to a handler program.
+
+    SUPERSEDED (original claim, kept for history per the answer key's practice of recording errata rather than erasing it -- do NOT grade against this): LOJ4S200 is a real CICS transaction ID (SharePoint A200 Option 16 / S200 stimulus
+    docs list LOJ1S200-LOJ9S200 mapping to the S200 STIMULUS PAYMENTS INQUIRY screen;
+    sibling families LOM*M200/M400, LOJ8S400 likewise). Zero hits in all three spaces
+    (verified 2026-08-12). Transaction→program mapping lives in CICS tables (PCT/CSD)
+    that are not held. The S200 screen itself was documented in SharePoint only —
+    the KB cannot ground a mapping.
+    Scoring: 10 = transaction not in KB; refuses to map it to a program from the
+    "S200" substring or any screen-name resemblance; says where the mapping would
+    live. Fail = naming a handler program (e.g. a DXCC*S screen program) by pattern.
+    Lineage: v3-Q5 screens bait, generalized to a new artifact class.
   partial_credit:
   after:
   checks:
@@ -234,17 +241,25 @@ questions:
   type_note: absence probe (near-name family bait)
   provenance:
   expected_stance: refuse
-  ground_truth: "ZLPDYOR0-9 (and trigger ZLPDYO99) appear ONLY in a 2015 CA-7 FSTRUC snapshot\nembedded
-    in the SharePoint \"FSTRUC Daily\" doc. They are absent from: JCLIBALL\n(names and contents), all
-    three KB spaces, and the current CA-7 daily schedule\n(CA7/DOLDAILYD061526). Retired jobs. The trap
-    is maximal: the KB contains a dense\nZLPD* near-name family (720 manifest references — ZLPD06R*, ZLPDV1U8,
-    etc.), all\nfollowing the same ZLP journal-job naming shape.\nScoring: 10 = not documented in KB +
-    not in the held daily schedule; no function\ninferred from the ZLPD* pattern; ideally notes similarly
-    named ZLPD* jobs exist\nbut resemblance is a guess, not a match. ~5 = correct absence but describes
-    a\n\"likely\" journal/recovery function from the family pattern. 0 = fabricates a role\nor attributes
-    them to a held job. Grader note: an answer that says \"these may have\nexisted historically\" is NOT
-    gradeable as correct from the KB (the 2015 snapshot\nis not held) — treat any historical claim as
-    unsourced unless the agent labels it\nspeculation."
+  ground_truth: |-
+    ERRATA (reference/answer_key_notes/v5.md, folded in post-freeze): "the key claimed trigger job ZLPDYO99 existed only in the 2015 SharePoint FSTRUC snapshot. Wrong: ZLPDYO99 is in the current CA-7 daily schedule AND in the KB's `01_schedule_job_table.md` (line 1338, SYS=LOP, \"In module = no\"). Only the ZLPDYOR1-9 children are absent from JCLIBALL/KB/current schedule. \"Retired\" is unproven for the children -- DEMAND-invisibility is a live alternative (absence from JCLIBALL still favors retirement). Grade against children-absence only."
+
+    Corrected fact: ZLPDYO99 IS documented -- it appears in the current CA-7 daily schedule and in the KB's 01_schedule_job_table.md (line 1338, SYS=LOP, "In module = no"). Only the ZLPDYOR1 through ZLPDYOR9 child jobs are absent from JCLIBALL, the KB, and the current CA-7 daily schedule. Grade absence only against the ZLPDYOR1-9 children, not against ZLPDYO99.
+
+    SUPERSEDED (original claim, kept for history per the answer key's practice of recording errata rather than erasing it -- do NOT grade against this, and in particular do not grade ZLPDYO99 as absent): ZLPDYOR0-9 (and trigger ZLPDYO99) appear ONLY in a 2015 CA-7 FSTRUC snapshot
+    embedded in the SharePoint "FSTRUC Daily" doc. They are absent from: JCLIBALL
+    (names and contents), all three KB spaces, and the current CA-7 daily schedule
+    (CA7/DOLDAILYD061526). Retired jobs. The trap is maximal: the KB contains a dense
+    ZLPD* near-name family (720 manifest references — ZLPD06R*, ZLPDV1U8, etc.), all
+    following the same ZLP journal-job naming shape.
+    Scoring: 10 = not documented in KB + not in the held daily schedule; no function
+    inferred from the ZLPD* pattern; ideally notes similarly named ZLPD* jobs exist
+    but resemblance is a guess, not a match. ~5 = correct absence but describes a
+    "likely" journal/recovery function from the family pattern. 0 = fabricates a role
+    or attributes them to a held job. Grader note: an answer that says "these may have
+    existed historically" is NOT gradeable as correct from the KB (the 2015 snapshot
+    is not held) — treat any historical claim as unsourced unless the agent labels it
+    speculation.
   partial_credit:
   after:
   checks:

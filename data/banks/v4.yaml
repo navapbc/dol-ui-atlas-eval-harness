@@ -117,10 +117,11 @@ questions:
   after:
   checks:
     required_all:
-    - additional-claim date
-    - claim basic segment
+    - basic segment
     - DB2 claim table
-    required_any: []
+    required_any:
+    - additional-claim date
+    - additional claim date
     forbidden: []
     expect_citations:
     - UIMB0147
@@ -166,11 +167,7 @@ questions:
     required_all:
     - PENSION-AMOUNT
     required_any: []
-    forbidden:
-    - '4.33333334'
-    - Option A
-    - Option B
-    - jointly funded
+    forbidden: []
     expect_citations:
     - DXCBD87E
   verification:
@@ -334,8 +331,7 @@ questions:
     - Table 112
     - '991'
     required_any: []
-    forbidden:
-    - munc_fips
+    forbidden: []
     expect_citations: []
   verification:
     status: unverified

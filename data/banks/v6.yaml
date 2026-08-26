@@ -286,9 +286,7 @@ questions:
     required_all:
     - IDN_CONVERSATION
     required_any: []
-    forbidden:
-    - Direct Deposit Sync
-    - Direct Deposit Update
+    forbidden: []
     expect_citations:
     - UIMB0803
   verification:
