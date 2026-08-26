@@ -209,7 +209,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: ["not found", "does not exist", "no such program"]
+    required_any: []
     forbidden: []
     expect_citations: []
   verification:
@@ -236,8 +236,8 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: ["not in the KB", "not documented"]
-    forbidden: ["NEWCOPY", "PHASEIN", "DB2 BIND"]
+    required_any: []
+    forbidden: ["NEWCOPY", "PHASEIN", "DB2 BIND", "library promotion path"]
     expect_citations: []
   verification:
     status: unverified

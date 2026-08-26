@@ -178,7 +178,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: ["absent from the KB", "not in the KB", "not documented"]
+    required_any: []
     forbidden: []
     expect_citations: []
   verification:
@@ -201,7 +201,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: ["not available"]
+    required_any: []
     forbidden: ["D02JTSE", "D02JTSI"]
     expect_citations: []
   verification:

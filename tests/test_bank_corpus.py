@@ -57,6 +57,43 @@ def test_refuse_and_hedge_questions_have_no_required_citations():
                 )
 
 
+_DISALLOWED_ABSENCE_FRAGMENTS = (
+    "not found",
+    "does not exist",
+    "no such",
+    "not available",
+    "not documented",
+    "not in the kb",
+    "cannot",
+    "could not",
+    "unable",
+    "no evidence",
+    "not present",
+)
+
+
+def test_required_terms_are_not_generic_refusal_phrasing():
+    # required_all/required_any must key on substance (identifiers, values, rules),
+    # not on how a refusal happens to be worded. Refusal is a stance judgment
+    # (expected_stance compared against an observed_stance supplied by a human or a
+    # transport signal), not something the deterministic layer should string-match.
+    # A term like "not found" or "could not" fails a correctly-worded refusal that an
+    # agent phrases differently, generating exactly the score instability the
+    # deterministic layer exists to remove. This guards every bank, including the
+    # not-yet-populated v4-v6, so this class of defect can't return.
+    for bank in load_all_banks(BANKS):
+        for q in bank.questions:
+            for name in ("required_all", "required_any"):
+                for term in getattr(q.checks, name):
+                    lowered = term.lower()
+                    for fragment in _DISALLOWED_ABSENCE_FRAGMENTS:
+                        assert fragment not in lowered, (
+                            f"{q.id}: {name} term {term!r} is a generic refusal/"
+                            f"absence phrase (matched {fragment!r}); refusal is a "
+                            "stance judgment, not a deterministic content check"
+                        )
+
+
 def test_run_order_resolves_for_every_bank():
     for bank in load_all_banks(BANKS):
         assert len(resolve_run_order(bank)) == len(bank.questions)

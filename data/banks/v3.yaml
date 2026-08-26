@@ -179,7 +179,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: ["not found", "not documented"]
+    required_any: []
     forbidden: ["display VERIS results"]
     expect_citations: []
   verification:
@@ -238,7 +238,7 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: ["not found", "not documented"]
+    required_any: []
     forbidden: ["phone payment system"]
     expect_citations: []
   verification:
