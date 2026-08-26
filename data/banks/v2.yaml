@@ -92,7 +92,7 @@ questions:
   type: gap_probe
   type_note: gap probe
   provenance:
-  expected_stance: refuse
+  expected_stance: hedge
   ground_truth: "`T109TABL` copybook (in space) defines the record layout (T109-PROG-CODE PIC 99,\ndescription,
     EB/EC codes) and UIMZ0003 (NOT in space) loads it from a table dataset.\nThe actual code values are
     data, not source, and are not in the KB. Program code 45 =\nCWC is corroborated by a comment in JO7UD158

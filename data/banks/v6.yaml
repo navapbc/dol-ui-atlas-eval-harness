@@ -228,11 +228,25 @@ questions:
     replacement system tell a web-submitted change from other sources?
   type: scope_boundary
   type_note: retrieval + scope boundary
-  provenance:
-  expected_stance: answer
-  ground_truth: "Ground truth in v3_answer_key.md §RESERVE: UIMT_DIR_DEP_INFO carries IDN_CONVERSATION;
+  provenance: "Ground truth in v3_answer_key.md §RESERVE: UIMT_DIR_DEP_INFO carries IDN_CONVERSATION;
     'WEB ' = online self-service (UIMB0803 daily BC-516 extract evaluates D185/D186/WEB); UIMB0298 debit-card-migration
     inserts. SSI-side job names/schedules NOT in KB"
+  expected_stance: answer
+  ground_truth: "Cut per user to bring the bank to 8; kept as a verified swap-in candidate for a\nfuture
+    version.\n\nSource brief: \"Deprecate SSI Batch Jobs\" (four SSI-side batch jobs push direct\ndeposit/address
+    updates into LOOPS; three are rewritten, Direct Deposit Sync remains).\n\nVerified in space:\n\n-
+    Direct deposit records in UIMT_DIR_DEP_INFO carry a Transaction Source Code\n  (IDN_CONVERSATION);
+    'WEB ' marks changes submitted through the online self-service\n  channel (rule documented in UIMB0803,
+    which extracts pay-status-changed records\n  daily to populate Form BC-516, evaluating conversation
+    types D185/D186/WEB).\n- ~111 files mention direct deposit; 17 BRE docs reference IDN_CONVERSATION;
+    UIMB0298\n  handles debit-card-migration inserts against the Direct Deposit Info table.\n\nVerified
+    ABSENT: the SSI-side job names from the brief — \"Direct Deposit Sync\",\n\"Direct Deposit Update\"\
+    , \"Direct Deposit Update Update\", \"Address Update\". The only\ngreps resembling them are false
+    positives (a \"DABS IMS UPDATE UPDATE\" JCL comment in\nZDLCANU3 and an \"UPDATE UPDATE_CURSOR ERROR\"\
+    \ literal in UIMB0142). SSI itself is not\ndocumented as a system in the KB.\n\nFull credit: describes
+    the LOOPS-side evidence (IDN_CONVERSATION='WEB ', UIMB0803's\nextract, the DB2 table) and states that
+    the SSI-side batch jobs and their schedules\nare not in the linked spaces. Describing the four SSI
+    jobs by name as if documented,\nor asserting the SSI→LOOPS transport mechanism, is the fail."
   partial_credit:
   after:
   checks:
@@ -250,11 +264,20 @@ questions:
     Is that how LOOPS uniquely identifies a claim?
   type: retrieval
   type_note: retrieval
-  provenance:
+  provenance: 'Ground truth in v4_answer_key.md §RESERVE: yes — SSN/PC/DOC triplet is the pervasive claim
+    identity (UIMV_SSN_RETIRED key, UIMT_RSA_NONMON, UIMB0147 crossmatch, report headers); may note IMS
+    segments additionally qualified by segment type (DB01/DB10)'
   expected_stance: answer
-  ground_truth: 'Ground truth in v4_answer_key.md §RESERVE: yes — SSN/PC/DOC triplet is the pervasive
-    claim identity (UIMV_SSN_RETIRED key, UIMT_RSA_NONMON, UIMB0147 crossmatch, report headers); may note
-    IMS segments additionally qualified by segment type (DB01/DB10)'
+  ground_truth: "Source spec: Weekly Certification in Salesforce — the Persistence API callout sends\n\
+    SSN + Date of Claim + Program Code \"to ensure that only related weekly certifications\nare returned.\"\
+    \n\nCandidate question: \"The Persistence API identifies a claim by SSN, date of claim,\nand program
+    code. Is that how LOOPS uniquely identifies a claim?\"\n\nVerified in space: the SSN/PC/DOC triplet
+    is pervasive as the claim identity — e.g.\nUIMB0004's UIMV_SSN_RETIRED insert keys on IDN_SSN + PC
+    + DOC; UIMT_RSA_NONMON\ncarries SSN, program code, claim date; UIMB0147's crossmatch insert and RTW
+    report\nlines all carry SSN/PC/DOC; report headers routinely print the triplet\n(RTW-HEAD-SSN/PC/DOC).
+    A grounded answer confirms the triplet with citations and may\nnote IMS claim segments are additionally
+    qualified by segment (DB01 basic, DB10\nadditional claim). Kept as a swap-in candidate; cut to hold
+    the bank at 8."
   partial_credit:
   after:
   checks:

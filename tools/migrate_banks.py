@@ -14,6 +14,13 @@ full prose rather than shorthand. `v6_draft.md` supplies no additional
 ground-truth blocks; it is preserved to answer_key_notes/v6.md as reference
 (freeze status, adjudication log) via the same notes path used for the other
 versions' non-ground-truth sections.
+
+Two v6 questions (v6-Q9, v6-Q10) carry a "Ground truth in vN_answer_key.md
+§RESERVE: ..." pointer instead of prose, because they were revived from an
+earlier version's cut RESERVE block. `build_bank` resolves these against the
+pre-read `reserve_sources` map (every version's raw answer-key/draft
+Markdown, keyed by filename) and moves the original pointer sentence into
+`provenance` so the trail back to the source RESERVE block stays visible.
 """
 
 from __future__ import annotations
@@ -51,17 +58,27 @@ def main() -> int:
 
     versions = parse_question_bank((src / "question_bank.md").read_text(encoding="utf-8"))
 
+    # Pre-read every version's raw answer-key/draft Markdown, keyed by
+    # filename, so pointer resolution (e.g. v6's "Ground truth in
+    # v3_answer_key.md §RESERVE: ..." referencing v3's file) can look up any
+    # version's RESERVE block regardless of processing order.
+    reserve_sources: dict[str, str] = {}
+    for version in versions:
+        for candidate in (src / f"{version}_answer_key.md", src / f"{version}_draft.md"):
+            if candidate.exists():
+                reserve_sources[candidate.name] = candidate.read_text(encoding="utf-8")
+
     written = 0
     for version, rows in sorted(versions.items()):
         key_path = src / f"{version}_answer_key.md"
         draft_path = src / f"{version}_draft.md"
 
         if key_path.exists():
-            source_md = key_path.read_text(encoding="utf-8")
+            source_md = reserve_sources[key_path.name]
             source_name = key_path.name
             ground = parse_answer_key(source_md)
         elif draft_path.exists():
-            source_md = draft_path.read_text(encoding="utf-8")
+            source_md = reserve_sources[draft_path.name]
             source_name = draft_path.name
             ground = parse_answer_key(source_md)
             if not ground:
@@ -83,7 +100,8 @@ def main() -> int:
             continue
 
         sourcing = f"Migrated from {source_name}." if source_name else None
-        bank = build_bank(version, rows, ground, AGENT, CORPUS, sourcing=sourcing)
+        bank = build_bank(version, rows, ground, AGENT, CORPUS, sourcing=sourcing,
+                          reserve_sources=reserve_sources)
         with target.open("w", encoding="utf-8") as fh:
             _yaml.dump(json.loads(bank.model_dump_json(exclude_none=False)), fh)
         print(f"wrote {target} ({len(bank.questions)} questions, checks empty)")
