@@ -1,0 +1,23 @@
+[project]
+name = "atlas-eval"
+version = "0.1.0"
+description = "Auditing harness for NJDOL Atlas chat agents"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "ruamel.yaml>=0.18",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "playwright>=1.44"]
+
+[project.scripts]
+atlas-eval = "atlas_eval.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
