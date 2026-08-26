@@ -1,0 +1,269 @@
+version: v6
+frozen_on:
+question_sha256:
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: Migrated from v6_draft.md.
+questions:
+- id: v6-Q1
+  text: 'Walk me through the daily bank reconciliation job L204DF2: what does it produce, and how do check
+    records get from the daily register to the bank files?'
+  type: retrieval
+  type_note: retrieval (multi-hop chain)
+  provenance:
+  expected_stance: answer
+  ground_truth: 'SORTA truncates BIGREC to 80B; BNKFLMOD zeroes leading 3 check digits for online account
+    0001273507; BNKFLDTE prepends MMDDCCYY stamp (80→88B); UIBNKDAT splits into four bank transmission
+    files, routing on DAA account: 0001273496 → ACC2528 ("online" file), 0001273507 → ACC2536 ("batch";
+    online/batch deliberately reversed per 7/99 comment), 0000422327 → ACC0987 (TUC), 3359810499 → ACC0499
+    (EB); 2528/2536/0987/0499 are only dataset-name suffixes from OLD BofA account numbers, and each file
+    gets a RECONCILIATIONHEADER (bank 0075, totals); BNKFLBLD loads online (0001273507) + backup (0001273518)
+    account records into BANKMTCH VSAM (120-day purge, per-account check-number parsing: backup 7-digit,
+    online 8-digit); BUILDOUT rebuilds outstanding-payments file (pivot year 80) → CHECKS.ISSUED GDG.
+    BNKFLBLD/BUILDOUT branch off pre-BNKFLMOD data, so the check-digit zeroing does NOT reach BANKMTCH
+    or CHECKS.ISSUED. Single-account transmission (COMBINE) retired, accounts kept separate since BofA
+    change; JCL says transmission occurs in job COREDIAL (comment names INTERM.RECON.DTL, which is stale/no
+    longer produced)'
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q2
+  text: How are the daily BC3E claimant forms prepared for laser printing in job L207DCL, and what 
+    does each program in the chain do to the record?
+  type: retrieval
+  type_note: retrieval (multi-hop chain)
+  provenance:
+  expected_stance: answer
+  ground_truth: Foreign/domestic split on ZIP '00000' (col 342); DXCB165U appends 5+4 ZIP (778→787);
+    DXCB166U substitutes saved ZIP when primary blank or all zeroes (back to 778); DXCBD24E inserts 
+    the 5-digit ZIP into the last address line when 3 consecutive spaces are found (778→778, no 
+    length change); DXCBBC3E reformats LAST/FIRST MI → FIRST MI LAST and appends a 12B key = 4-digit
+    SSN fragment (digits 4-7) + YYYYMMDD mail date (790); UIMB0754 step (load module UIMI0754, DB2) 
+    inserts 7-digit employer SYNCODE from UIMT_SG03_EMPLOYER by SSN+FEIN between data and key, zero 
+    default on any non-zero SQLCODE (797); foreign stream SKIPS the three ZIP steps and gets only 
+    BC3E+SYNCODE treatment; IEBGENER LASRPRNT concatenates foreign-first then domestic to AFP laser 
+    (FORMDEF GEN14, PAGEDEF DOLB3E)
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q3
+  text: In the daily refund reporting stream, how does LOOPS decide whether a refund payment counts 
+    as CASH, an offset, or a write-off?
+  type: rule_logic
+  type_note: rule logic
+  provenance:
+  expected_stance: answer
+  ground_truth: "DXCRD99E (job L213DC): pay types 01-04,07,09-12,51 → CASH; type 99 with waiver reason
+    code → WOFF, without → CASH; all others → OFFSET (literal 'CLPY'), except type 06 which is an invalid-pay-type
+    error routed to the DB89 error file. Also bypasses payment dates before 01/01/1998 (stored complemented;
+    converted first) and voided After images; SSN 999999999 → SUSPENSE ('SP' in the separate LOOPS/SKELETON
+    indicator field, not a third account code — the record still gets CASH/CLPY/WOFF). Downstream SYNCSRT5-7
+    split into DB99CASH/DB99OFFS/DB99WOFF"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q4
+  text: What validations and computations does DXCRD88E apply to refund DB08 records, and how does 
+    it classify claims?
+  type: rule_logic
+  type_note: rule logic
+  provenance:
+  expected_stance: answer
+  ground_truth: "Net refund balance = amounts due minus paid across NONFED/EB/FSC/FED/EUB/WFD/FINES/INTEREST;
+    sign from before/after byte (B,D=-1; A,I=+1); rejects invalid B/A byte, 'D' deletes, PC 45 (all routed
+    to error file, no abend); LOOPS = PC 10,20-23,30,31,40-43 vs SKELETON; PC 99 = SUSPENSE; Federal+NonFed
+    percent must sum 100% (D15U exempt; all percent checks gated on a FED amount-due > 0); errors to the
+    DB89FILE DD. Bonus credit: PC 20 (FED%=UCFE%=100%) / PC 30 (FED%=UCX%=100%) / PC 80/83 checks, UCX%+UCFE%=FED%
+    reconciliation (±0.0001), UCX/UCFE apportionment of FED balances"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q5
+  text: Job L216DA maintains the alpha (name search) file. What are its inputs, and how does a day's
+    activity end up in the alpha VSAM file?
+  type: data_flow
+  type_note: retrieval (multi-hop, data flow)
+  provenance:
+  expected_stance: answer
+  ground_truth: "Three claim streams (NEWCLAIM, CLMMAINT, DABS SRTFL) → DXCBD08R standardizes to 55B alpha
+    records (name split on '/', address split, strip non-alpha); VSAM.ALPHA.CLUSTER unloaded (REPRO SKIP(1));
+    DXCBD06R splits each 23,465B record into up to 434 54B person records; both sorted by SSN (JCL step
+    comments wrongly say \"BY ZIP CODE\"; bytes 21-29 are the SSN — bonus if surfaced); DXCBD13R merges
+    — daily record replaces matching old record, latest consecutive duplicate wins; output ALPHA GDG to
+    tape, permanent retention (EXPDT=99000). L216DA itself never writes the VSAM cluster: companion job
+    L216DB (in corpus) deletes/redefines the cluster and DXCBD04R repacks the GDG's 54B records into the
+    434-slot VSAM records — full credit requires this handoff"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q6
+  text: The automated handbook update job sorts IB13 updates by state and section within date and 
+    time before applying them. Why does that order matter, and what does the update program do with 
+    each record?
+  type: rule_logic
+  type_note: rule logic (design intent)
+  provenance:
+  expected_stance: answer
+  ground_truth: "Job L2AHD13. Sort card is state+section MAJOR, date+time minor (the JCL narrative's \"\
+    state and section within date and time\" wording is inverted vs the card; a technically-correct answer
+    says date/time within state/section). Most-recent update processed LAST; UIPBHB02 deletes the existing
+    handbook record then writes the update (delete-then-write), so the newest version of each section
+    survives. Also: chains multi-record sections via HB-NEXT-RECORD-SWITCH (continuation records must
+    arrive consecutively), deletes the matching Handbook-In-Progress entry, flips the IB13 batch switch
+    to mark processed (UIPBHB01 skips switch='Y' next run). Bonus: a commented-out sort card (date/time
+    major) sits above the active one; it would break SECTION CONTIGUITY and misassemble multi-record sections
+    (last-write-wins per key would technically survive either order — do not credit \"newest wouldn't
+    survive\" as the failure mode)"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q7
+  text: Which daily job produces the employer daily charge report, which records make it onto the 
+    report, and how is the report organized?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "L205DRPT: DXCBD90E passes the daily charge file through (extract output is DUMMY'd);
+    SORTCPY keeps only FEINs 000000000200002 / 000000000300002; DXCBO56R prints with amount negated when
+    void indicator ≠ '0', PAYTRAN filter (<200 and 400-599 accepted), control breaks FEIN (major) → SYNCODE
+    → SSN (minor) with subtotals cascading minor-to-major plus grand total, 52 lines/page; output to external
+    writer LOP03900 (class 9, FREE=CLOSE)"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q8
+  text: In job L213DC, where do the error records from the DB08 reformat program (DXCRD88E) actually
+    land, and is there anything surprising about it?
+  type: data_flow
+  type_note: data flow (conflict surfacing)
+  provenance:
+  expected_stance: answer
+  ground_truth: "The DD is named DB89FILE in both programs but points at DIFFERENT datasets: DXCRD88E's
+    errors land in L213DC.DB98FIL.DTL; DXCRD99E's in L213DC.DB89FIL.DTL. Only the 88E half mismatches
+    (nothing was swapped between steps, so do not require \"crossed\" framing); a commented-out DD in
+    the 88E step already pointed at DB98FILE.DTL (evidence of a FILE→FIL rename, not of the mismatch being
+    introduced). REPRA262, a later step in the SAME job, REPROs the two datasets straight into DB89FILE/DB98FILE
+    GDGs (89→89, 98→98). Full credit surfaces the DD-name-vs-dataset mismatch on the 88E step; asserting
+    errors land in \"the DB89 file\" from the DD name alone is the miss. Note for grading a BRE-only arm:
+    bre/jcl/L213DC.md DOES capture the DD→dataset mapping, but mislabels both files as \"validated records\"\
+    \ rather than errors — crediting content requires the COBOL/BRE program docs"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q9
+  text: (v3 reserve) How does LOOPS record self-service direct deposit changes, and how would the 
+    replacement system tell a web-submitted change from other sources?
+  type: scope_boundary
+  type_note: retrieval + scope boundary
+  provenance:
+  expected_stance: answer
+  ground_truth: "Ground truth in v3_answer_key.md §RESERVE: UIMT_DIR_DEP_INFO carries IDN_CONVERSATION;
+    'WEB ' = online self-service (UIMB0803 daily BC-516 extract evaluates D185/D186/WEB); UIMB0298 debit-card-migration
+    inserts. SSI-side job names/schedules NOT in KB"
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v6-Q10
+  text: (v4 reserve) The Persistence API identifies a claim by SSN, date of claim, and program code.
+    Is that how LOOPS uniquely identifies a claim?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: 'Ground truth in v4_answer_key.md §RESERVE: yes — SSN/PC/DOC triplet is the pervasive
+    claim identity (UIMV_SSN_RETIRED key, UIMT_RSA_NONMON, UIMB0147 crossmatch, report headers); may note
+    IMS segments additionally qualified by segment type (DB01/DB10)'
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:

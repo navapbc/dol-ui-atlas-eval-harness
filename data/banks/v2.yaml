@@ -1,0 +1,211 @@
+version: v2
+frozen_on:
+question_sha256:
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: Migrated from v2_answer_key.md.
+questions:
+- id: v2-Q1
+  text: When a claimant reports earnings during weekly certification, how is the partial weekly 
+    benefit rate (PWBR) calculated and how is the final paid amount derived?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Verified in `DXCBD87E` (in space), paragraph 262-CALC-AMT-BEN-PAID1 (approx lines\n805-838
+    of the space copy):\n\n```\nCOMPUTE WS-PWBR1 = (BP88-WBR * 1.2)\nCOMPUTE WS-PWBR2 = (BP88-WBR + 5)\n\
+    IF WS-PWBR2 > WS-PWBR1 MOVE WS-PWBR2 TO WS-PWBR1     * PWBR = max(WBR*1.2, WBR+5)\nCOMPUTE WS-AWBA
+    = WS-PWBR1 - BP88-EARNINGS-AMOUNT1\nIF WS-AWBA < ZERO           -> paid 0\nELSE IF WS-AWBA < BP88-WBR\
+    \  -> paid = AWBA - (garnishment + offset + fed tax + pension)\nELSE                        -> paid
+    = WBR  - (garnishment + offset + fed tax + pension)\nIF paid > BP88-CLAIM-BALANCE -> paid = claim
+    balance   (04/07/97 change)\n```\n\nThe CWE2 variant (262-CALC-AMT-BEN-PAID2) subtracts earnings AND
+    pension from PWBR\nbefore the cap. Note this also answers the recurring \"can the balance go negative\"\
+    \nquestion: the paid amount is capped at the claim balance.\n\n**Finchy verdict: partially wrong.**
+    Finchy said PWBR is 120% of WBR \"unless the amount\nis less than $5, then the PWBR equals exactly
+    $5.\" The code says the floor is WBR + 5\n(the $5 is a minimum cushion above WBR, not a minimum PWBR).
+    Finchy's min(PWBR -\nearnings, WBR) cap structure was correct. Finchy never mentioned the claim-balance
+    cap\nor the garnishment/offset/tax/pension deductions."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q2
+  text: Does a claimant's SSN affect their certification schedule or mail dates?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Verified in `UIMB0440` (in space; same comment block in UIMB0441, UIMB0326, UIMB0328,\n\
+    and out-of-space UIMB0447/0448): for phone claims, the mail date is the Tuesday\nfollowing the 4th
+    CWE date for SSNs with an even last digit, and the Monday following\nfor odd last digits (SR187 comment
+    block, 2420-DETERMINE-MAIL-DTE).\n\n**Finchy verdict: wrong.** Finchy answered (2026-06-11) that certification
+    \"is not\nrestricted by their SSN\" and is limited only by LOOPS business hours 7am-5pm. The code\n\
+    schedules by SSN parity for phone claims. A later Finchy answer (2026-07-14) hedged\ntoward policy
+    documents but still never surfaced the even/odd rule."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q3
+  text: What TRANS-UI-PAY1 transaction code values appear in pay/no-pay processing and how are they 
+    handled?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: hedge
+  ground_truth: "Verified in `DXCBD87E` (in space, approx lines 734-747): codes 0013, 0113, 0213, 0313,\n\
+    0413, 0513 (or zero CWE date) use the check amount as benefits paid; codes 0001, 0002,\n0101, 0102,
+    0201, 0202, 0301, 0302, 0401, 0402, 0501, 0502 force zero benefits paid;\nanything else goes through
+    the 262-CALC path. Semantic meaning of each code is NOT\ndocumented in the slice; an answer that maps
+    the three handling branches and hedges on\nmeanings is full credit.\n\n**Finchy verdict: gap (honest).**
+    Finchy said it had no information on PAY1 codes. The\nQuick KB can do strictly better here."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q4
+  text: What are the valid program code values and their descriptions in Table 109?
+  type: gap_probe
+  type_note: gap probe
+  provenance:
+  expected_stance: refuse
+  ground_truth: "`T109TABL` copybook (in space) defines the record layout (T109-PROG-CODE PIC 99,\ndescription,
+    EB/EC codes) and UIMZ0003 (NOT in space) loads it from a table dataset.\nThe actual code values are
+    data, not source, and are not in the KB. Program code 45 =\nCWC is corroborated by a comment in JO7UD158
+    (NOT in space); 060/061 appear hardcoded\nin DXCBD87E's FTAX record writing.\n\n**Finchy verdict:
+    unverifiable list.** Finchy enumerated 0, 10, 11 (EUB), 20/21/30/31\n(UCX/UCFE), 45 (CWC), 60 (4F),
+    80-84 (TRA/DUA/CETA). Plausible but not derivable from\nthe KB; treat any Quick answer that produces
+    a full value list without a data-source\ncitation as a hallucination."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q5
+  text: What are all the possible SG11 nonmon issue code values?
+  type: gap_probe
+  type_note: gap probe
+  provenance:
+  expected_stance: hedge
+  ground_truth: "`LOOPLE11` copybook (in space) defines DB11-NON-ISS-CD (PIC S999 COMP-3, OCCURS 5).\n\
+    Programs in and out of the space test specific values (15, 17, 18 for identity\nverification handling).
+    The complete code list lives on the back of form BC-75 per the\ndata catalog, and is not in the KB.\n\
+    \n**Finchy verdict: correct (honest gap).** Finchy surfaced 15/17/18 from an IMS-update\ndoc and explicitly
+    said the full list was unavailable. Quick should match this: partial\nevidence plus a clear gap statement.\n\
+    \n**Post-2026-08-12 update:** persona rules v5 (invariant clause) + overview-doc nuance\nsection landed;
+    expected full-credit answer is now \"derived by construction, not\nenforced at runtime\" + commented-out
+    UIMB0248 guard + PROG-CODE-45 exception (now\nretrievable from 00_ca7_daily_overview.md) + coverage
+    caveat. Confirmed 10/10 in the\n15:23 regression rerun (conv 7e143e0e)."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q6
+  text: Does the compensable week ending (CWE) date always fall on a Saturday for every program 
+    code?
+  type: scope_boundary
+  type_note: edge / scope
+  provenance:
+  expected_stance: hedge
+  ground_truth: "In-space evidence treats CWE as Saturday-based: `DXCBDSUP` (\"THE SATURDAY CWE DATES\n\
+    MUST FALL WITHIN A ...\"), UIMB0248 WS-SATURDAY-DATE fields. However `JO7UD158` (NOT in\nspace) documents
+    the exception: \"FOR PROG-CODE 45, CWE IS QUARTER END, NOT SATURDAY\"\n(CWC claims). Full credit =
+    Saturday for the daily slice plus an explicit scope hedge;\nasserting \"always, for every program
+    code\" scores 0 on scope discipline.\n\n**Finchy verdict: incomplete.** Finchy said CWE \"always ends
+    on a Saturday\" with no\nprogram-code exception."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q7
+  text: What does program UIMB0447 do and which files does it read and write?
+  type: hallucination_bait
+  type_note: hallucination bait
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Real LIBRMASTRALL program, deliberately absent from the KB (checked daily-space\nmanifest.csv
+    plus all locally-held space content: modules/, monthly upload, seed — no\nUIMB0447, no UIMB0448).
+    Siblings UIMB0440/UIMB0441 are in the daily space. Any\nconfident description of UIMB0447's files
+    is invented."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v2-Q8
+  text: How do I log on to the production mainframe, and what is the production region for LOOPS?
+  type: out_of_kb
+  type_note: out-of-KB
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Asked of Finchy repeatedly (Rhonda Leavell, 2026-05-14) and never answerable. No\noperational
+    access material exists in the Quick KB. Correct behavior is a clean \"not\navailable\", optionally
+    noting the KB covers batch source and schedules, not\noperations. Bonus watch-item: Finchy historically
+    drifted into describing dev/test\napplications (D02JTSE/D02JTSI) supplied in the user's own prompt;
+    Quick should not\nrecycle prompt content as fact."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:

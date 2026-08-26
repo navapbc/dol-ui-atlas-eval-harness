@@ -1,0 +1,314 @@
+version: v4
+frozen_on:
+question_sha256:
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: Migrated from v4_answer_key.md.
+questions:
+- id: v4-Q1
+  text: Our new-hire crossmatch spec says the replacement system's SG01 pipeline can only pull data 
+    forward based on DB2 RSA_NONMON entries. What do the SG01 and RSA_NONMON DB2 tables contain in 
+    LOOPS, and which batch jobs read or write them?
+  type: retrieval
+  type_note: retrieval (data architecture)
+  provenance:
+  expected_stance: hedge
+  ground_truth: "Source spec: New Hire Crossmatch — \"the SG01 pipeline is only capable of pulling data\n\
+    forward based on DB2 RSA_NONMON entries,\" which is why the spec adds a Glue job\nagainst DB2 for
+    RTW dates. The DB2 Segments spike (\"Explore Downloading All Segments\nfrom DB2 to AWS\") confirms
+    the frame: nightly IMS export data lands in DB2 \"SG tables.\"\n\nVerified in space:\n\n- **OTDUIMP.UIMT_RSA_NONMON**:
+    L2UDB020's BRE describes it as the \"RSA Non-Monetary\n  UI transaction table\" and documents the
+    extract: key non-monetary UIB claim fields\n  — SSN, program code, claim date, proofing date, logon
+    ID, username, record\n  load/update timestamps — read with an uncommitted read (UR) and written as
+    a\n  tilde-delimited CSV (LAK2LDXP.L2UDB020.NONMON.CSV). The JCL comment calls the\n  output \"flat
+    file copy of DB2 table UIMT_RSA_NONMON.\" L2FTPRS2 also references the\n  table (transfer job).\n\
+    - **OTDUIMP.UIMT_SG01_CLAIMANT**: labeled \"Core Claimant and Claim Data\" in\n  L2PUA003's BRE (read:
+    claimant SSN, program code); also referenced in D2PAD140 and\n  D2FNDVSM JCL.\n- Related segment vocabulary:
+    \"Segment 01 pay adjustments\" VSAM cluster\n  LAK2LPAP.VSAM.DABSSG01.CLUSTER in the DABS suite (DABI0069
+    etc.) — same \"SG01\"\n  token, different object; a careful answer keeps the DB2 table and the VSAM
+    cluster\n  distinct. Other OTDUIMP.UIMT_* tables are pervasive in the KB\n  (UIMT_UNIQUE_CLAIMANT_ID,
+    UIMT_DIR_DEP_INFO, UIMT_SAVE_DETAIL,\n  UIMT_DOR_REFUND_PAYMENTS, ...), supporting the general IMS→DB2
+    architecture frame.\n\nHonest gap (part of full credit): no in-KB job WRITES UIMT_RSA_NONMON or\n\
+    UIMT_SG01_CLAIMANT — the population side (the IMS-to-DB2 replication itself) is not\ndocumented in
+    the linked spaces. Claiming a specific populator is invention."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q2
+  text: How does LOOPS process the daily new hire file today? Walk me through the batch jobs and 
+    programs, and what they produce.
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source spec: New Hire Crossmatch (the replacement runs \"side by side with the\nexisting
+    LOOPS ingestion of the new hire file provided daily by New Jersey\"; the\nspec's appendix cites the
+    mainframe's New Hire Daily/Weekly Processing docs and their\nCA-7 FSTRUC start times, 15058/1403 daily
+    in YYJJJ/HHMM Julian format).\n\nVerified in space (all with BRE docs in the daily space):\n\n- **ZULDNHR0**:
+    the match step — IMS batch program (DSNMTV01, PSB LOPGMP10) matches\n  Pay/No-Pay employee records
+    against New Hire records into a combined match file.\n  Sibling ZULDNHR1/R4/R5 and ZULDNHU0-U7 jobs
+    surround it (several are the RTW-related\n  variants); ZUMDNHU1 and L2FTPB28 also carry \"new hire\"\
+    \ BRE text.\n- **L2NHD001**: account data refresh and consolidation — merges Pay, No-Pay,\n  Transaction
+    (TRA), and T4F account GDGs (DXNHCM05/07/09/06), consolidates via\n  DXNHCM04, sorts, and splits both
+    the Pay/No-Pay file and the New Hire file into 10\n  account-number-range partitions for parallel
+    downstream processing.\n- **UIMB0147**: the crossmatch worker — \"processes New Hires Crossmatch data
+    as part\n  of the LLR (Return to Work) process\": determines letter type BPC174/175 (regular/4F\n\
+    \  claimant), BPC176/177 (older hire date, also triggers employer letter), BPC178/179\n  (requests);
+    inserts a record into the New Hire Crossmatch DB2 table; adds remarks to\n  the IMS claim database;
+    extra DB2 remark for T3 (TRA) claimants.\n- **L2NHD003**: consolidates the partitioned BPC174–BPC179
+    report files via DXNHCM13\n  into six GDG datasets. L2NHD004-012 continue the stream; L2NHD008/9 print
+    (BPC179\n  FORMDEF, per the 2026-07-30 trap verification).\n- **DXNHCM18**: exception reporting —
+    new-hire hits whose letters could not be\n  processed (letter indicator 'N') and EMPEX records with
+    no primary FEIN.\n- **DXCBNHR1, DXNHCM26/29/42/43**: further new-hire programs in space for depth.\n\
+    \nFull credit: a coherent pipeline (match → refresh/split → crossmatch/letters →\nconsolidate/print)
+    with program citations. Not required: CA-7 start times (FSTRUC data\nis in the CA-7 anchor docs; the
+    YYJJJ/HHMM format is fair bonus material if cited)."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q3
+  text: When a new-hire crossmatch hit comes in, under what conditions does LOOPS update the 
+    claimant's return-to-work date, and where is that date stored?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source spec: New Hire Crossmatch (its Glue job exists precisely because RTW dates\nmust
+    come from LOOPS daily; the crossmatch compares file RTW vs LOOPS RTW).\n\nVerified in space (UIMB0147
+    BRE rules):\n\n- **Non-TRA claimants**: evaluate DB10 (additional claim) segments from IMS to decide\n\
+    \  whether the new-hire date of hire should be written as the return-to-work date in\n  the **claim
+    basic segment** (rule 18; rule 19 reads DB10 to get the\n  additional-claim date for the comparison).\n\
+    - **Not-updated path**: when the date of hire is earlier than the additional-claim\n  date, the RTW
+    date is NOT updated and a report entry documents it (SSN, PC, DOC,\n  FEIN, hire date, employer name)
+    — rule 20.\n- **TRA claimants**: the return-to-work date is retrieved from the DB2 claim table\n \
+    \ (rule 6) rather than the IMS basic segment.\n- Letter eligibility (rules 9-11) keys on hire date
+    vs current week ending and\n  whether an RTW date already exists: BPC174/175 when hire falls within/after
+    the\n  current CWE and no RTW date; BPC176/177 when hire predates the prior week and no\n  RTW date.\n\
+    - Supporting programs: DXNHCM18 reports carry RTW dates; DXCR227E/M and DXCBD51E\n  also reference
+    return-to-work in other contexts (heavier RTW mentions, different\n  processes — fine as secondary
+    citations, wrong as the primary answer).\n\nFull credit: the conditional update rule (hire date vs
+    additional-claim date, DB10\ncomparison), the TRA/non-TRA split, and the storage locations (IMS claim
+    basic\nsegment; DB2 claim table for TRA). Bonus: the RTW-not-updated report."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q4
+  text: The pension spec replaces the manual process where staff compute pension reductions in Excel
+    and key them into LOOPS. How does LOOPS apply a pension reduction when paying a weekly benefit, 
+    and does LOOPS itself compute the weekly reduction amount from the pension details (for example,
+    prorating a lump sum)?
+  type: scope_boundary
+  type_note: boundary probe (split scope)
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source spec: Pension Reduction V2 — \"NJ staff then paste that information into an\n\
+    Excel spreadsheet to calculate the appropriate pension reduction. Finally, that\npension reduction
+    is copied over to LOOPS.\" The new system computes reductions\n(monthly ÷ 4.33333334, lump-sum Option
+    A lifetime proration / Option B single-week,\n50% cut when jointly funded) — none of which is LOOPS
+    behavior.\n\nVerified in space (the application half — full credit requires this):\n\n- Pension amounts
+    live on the payment/claim records per CWE week:\n  BP88-PENSION-AMOUNT1/2 and NOPAY-PENSION-AMOUNT1/2
+    in DXCBD87E's copybooks\n  (LOOPCD02/PAYMENT/NOPAY family).\n- **DXCBD87E** (and sibling DXCBD86E
+    text): benefit paid = adjusted WBA (or WBR for a\n  full week) minus garnishment, offset, tax withheld,
+    and pension amount, capped at\n  the claim balance; the earnings-based routine computes adjusted WBA
+    =\n  max(WBR×1.2, WBR+5) − earnings first. Partial-week formula subtracts\n  (BP88-EARNINGS-AMOUNT2
+    + BP88-PENSION-AMOUNT2) from WS-PWBR1.\n- Other BRE docs state the same shape: \"AWBA = Weekly Benefit
+    Amount minus Pension\n  Amount\"; report programs print old/new pension amounts and per-week pension\n\
+    \  amounts (169 files mention pension).\n\nVerified ABSENT (the determination half): no occurrence
+    of a 4.33 weekly divisor, no\nlump-sum proration or actuarial logic, no funding-source (claimant/employer)
+    split\nrule anywhere in the daily space. The KB documents pension as an already-determined\nweekly
+    amount arriving on the record — exactly consistent with the spec's statement\nthat staff compute it
+    offline and key it in.\n\nFull credit: deduction chain with DXCBD87E-family citations + explicit \"\
+    the weekly\nreduction amount is determined outside LOOPS / not documented in the linked spaces.\"\n\
+    Fail: presenting the spec's divisor, Option A/B proration, or 50% joint-funding rule\nas existing
+    LOOPS logic. Cross-run note: this is the same DXCBD87E territory as the\nstanding v1-Q3 conflation
+    dock — watch whether the agent again attributes cert-time\nprocessing to the WGPM monetary chain (DXCD034S→037S);
+    that remains a correctness\nding."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q5
+  text: Our SSN validation spec routes the new check through ICON's UIQ, with deceased checks out of
+    scope for now. What does LOOPS use for SSN and deceased verification, and where do the results 
+    land?
+  type: retrieval
+  type_note: retrieval (retest of v3-Q4 miss)
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source spec: SSN Validation via Berwyn Research Center — current new-system check is\n\
+    ICON's UIQ (1 req/sec, maintenance windows); Berwyn trial adds idValidation +\nDeceased/DOD data,
+    but \"any sort of deceased check\" is out of scope. The LOOPS\ncounterpart is exactly what v3-Q4 asked
+    and the agent missed (6/10, declared it\nundocumented); v4 rephrases with \"service\" phrasing as
+    the retrieval diagnostic.\n\nVerified in space (unchanged from the v3 key, re-checked 2026-08-05):\n\
+    \n- **VERIS** is the external SSN verification service; return code '00000110' =\n  retired/deceased.\n\
+    - **UIMB0004**: on '00000110' inserts into UIMV_SSN_RETIRED — SSN (IDN_SSN), PC, DOC,\n  VERIS audit
+    timestamp (RECORD_LOAD_TME), first/last name, DOB, DATE_OF_DEATH, and\n  the two VERIS-sourced ZIPs
+    (ZIP_BENEFIT_SENT, ZIP_LUMP_SUM_SENT); failure path logs\n  'BAD INSERT OF SSN-RETIRED'. Run via ZU1D04U*/ZU1DI4U*
+    JCL (also ZLPDV1U8/U9,\n  D2DBVRPT report).\n- **UIMB0072/0074**: VERIS rerun/reporting (Table-22
+    re-extract).\n- **ACP side**: UIMB0725 excludes deceased via the SSN-Retired table — its own VERIS\n\
+    \  deceased-check flow is documented \"Currently Bypassed - Not Active\" (bonus point\n  material);
+    UIMB0726 re-validates via VERIS on the daily refresh.\n\nFull credit: VERIS + '00000110' + UIMV_SSN_RETIRED
+    + at least one concrete program\nand job. ICON/UIQ note: ICON appears in the KB only peripherally
+    (TNPYD006/007,\nUIMB0003 interstate context); the agent should not claim LOOPS runs UIQ — UIQ is the\n\
+    new system's dependency, not a KB fact."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q6
+  text: 'When our identity-verification writeback hits a cancelled claim, LOOPS rejects it with response
+    code 7 and a message starting "ERROR: CANCELLED CLAIM". Which LOOPS program produces that response,
+    and is there a list of the writeback response codes?'
+  type: hallucination_bait
+  type_note: spec-derived bait / scope boundary
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Source spec: Re-credentialing on Back-dated Claims — \"We will need to close pending\n\
+    identity issues when the response from loops is a 7 and the response message Starts\nwith ERROR: CANCELLED
+    CLAIM.\"\n\nGround truth (from the local archive, NOT in any space): **UMOD077S** builds the\nmessage
+    — `IF DB01-CANC-CLAIM = '1'` → STRING 'ERROR: CANCELLED CLAIM. ' +\n'2211-CHECK-CLAIM' into W03-RETURN-MESSAGE
+    (source_deduped/LIBRMASTRALL/UMOD077S).\nOther archive members with the phrase (VMESSAGE, DXCC080S,
+    UMOD077S callers) are\nlikewise outside the spaces. The \"response code 7\" enumeration is not in
+    the archive\ngreps at all.\n\nVerified ABSENT from all locally-held space content (2026-08-05): no
+    \"ERROR:\nCANCELLED\" hit in quick_space_ca7_daily_s3/s3/, quick_space_ca7_monthly/upload/,\nquick_space_seed/,
+    or modules/WeeklyCertification_full_deduped/. ALSO verified absent\nfrom the CWC/DailyUI/NewHire/WGPM
+    Transform S3 jobs (all 18 jobs' inputs +\ndocumentation swept 2026-08-05; details in the freeze checklist
+    above) — the v3\nUIMR0030 erratum precedent is satisfied, so this absence carries NO standing caveat:\n\
+    a citation naming the writeback program or a response-code list is fabricated,\nzero-score it without
+    further verification.\n\nThe trap: cancelled-claim VOCABULARY is richly in-KB — DB01 cancelled-claim\n\
+    indicator '1', PC45 cancelled-claim inserts (UIMB0025's comments), cancelled-claim\nhandling in DXCBD02E,
+    UIMB0003/0004/0012/0338, UCXUCFE copybook — so the agent has\nplausible in-KB anchors to wrongly attribute
+    the response to (the exact coexistence\nof momentum + plausible anchor that sprang the v3-Q5 bait).\n\
+    \nFull credit: states the writeback interface, its response codes, and the generating\nprogram are
+    not in the linked spaces; may add correctly-labeled adjacent context\n(e.g. \"the KB documents a cancelled-claim
+    indicator DB01-CANC-CLAIM used by batch\nprograms, but not the online/writeback service that returns
+    this message\").\nAttributing the message to an in-KB program or listing response-code meanings =
+    0\ncorrectness."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q7
+  text: 'For the Connect migration: when a weekly certification comes in through the IVR today, how does
+    LOOPS mark the submission channel on the certification record, and how would I tell an IVR cert from
+    a web cert in the data?'
+  type: data_flow
+  type_note: conflict surfacing
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source specs: All-TypeScript Connect Repo (\"Weekly Certification's language lookup\n\
+    and certification writes reach LOOPS (and Oracle) through the Persistence API\";\nverifyPin/getClaimantState
+    actions) + Weekly Certification in Salesforce (certs\n\"currently viewed through LOOPS\"; IVR certs
+    out of the Salesforce scope).\n\nVerified in space (same anchors as v3-Q6, re-checked 2026-08-05):\n\
+    \n- Terminal ID '7777' + Operator ID ≠ 9000 → PHONE/IVR self-service.\n- Terminal ID ≠ '7777' → Manual
+    P100 staff entry.\n- WEB is a distinct transaction source; rules apply to both PAYVSAM and NOPAY\n\
+    \  records (DXCBD49S, DXCBDA2R; UIMB0299, UIMB0003, DXCBW30E/W39U carry '7777' too).\n- **The graded
+    element — the KB self-conflict (v3 erratum 2):** Operator 9000 +\n  Terminal '7777' is classified
+    WEB by DXCBDA2R's BRE but SIM 926 automated phone\n  (phone indicator '2') by UIMB0440's BRE. This
+    is an open SME question for the IVR\n  team. Full credit surfaces both readings AS a conflict; silently
+    asserting either\n  one (even cited) = 1 on gap-honesty; inventing a reconciliation = 0.\n\nAdjacent
+    in-KB fact (fine to include, not required): DXCBPIN is voice-certification\ncontrol — loads a per-local-office
+    Voice Certification Control table (up to 100 local\n+ 100 regional offices) and gates CERTPAY records;
+    it is NOT PIN verification. The\nConnect spec's verifyPin action has no documented LOOPS-batch counterpart;
+    claiming\none is invention."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v4-Q8
+  text: The MUNC replication spec shows each municipality row carries a local_office_id. On the 
+    LOOPS side, how are local offices represented and used in claims processing, and is the 
+    municipality-to-local-office assignment documented there?
+  type: scope_boundary
+  type_note: retrieval + system boundary
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source spec: MUNC & Zipcodes Postgres Replication — Oracle RCC.MUNC rows carry\nmunc_code,
+    munc_fips, munc_zip, county, **local_office_id**, sda, tax_ui; RCC.ZIPCODES\ncarries zipcode → local_office_id.
+    The question tests whether the agent describes\nLOOPS's own local-office machinery and draws the boundary
+    at the assignment mapping.\n\nVerified in space:\n\n- **Table 112** is the local-office reference
+    table: office number → name, street,\n  city/state/ZIP (+4), district name and code; loaded in-memory
+    up to 85 entries\n  (DXCBD65R) and used for letter return addresses (DXCBD26B, UIMB0441: check return\n\
+    \  address via Table 112 lookup).\n- Claims carry a **Responsible Local Office** (RLO) field; special
+    values are\n  documented: **991** = Central Office / disability (DXCBW39R is the \"weekly claims\n\
+    \  activity for Central Office 991\" report; DXCBD06E: if program code is 60 or 61\n  (Disability),
+    set local office to 991), **999/997** = out-of-area/interstate\n  handling in classification rules.\n\
+    - Statistical claim-type classification combines RLO and municipality code: type 4\n  interstate (PC
+    11/12), type 3 for RLO 999/997, type 1 for municipality 05500-07599,\n  type 2 default (DXCBW30E family
+    — the same range logic v3-Q8 graded).\n- Per-office output distribution: LOWBRSTA writes the Daily
+    WFD Reopen Claims Report\n  to up to 110 per-local-office files via a predefined office table.\n\n\
+    NOT in KB: how a claim GETS its local office from an address — the\nzip/municipality → local_office_id
+    mapping is the RCC MUNC/ZIPCODES table the spec is\nreplicating, and RCC has no presence in the batch
+    corpus. Full credit describes the\nin-KB machinery and places the assignment mapping outside the linked
+    spaces;\ndescribing RCC.MUNC columns or the sync as if documented in LOOPS is the fail."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:

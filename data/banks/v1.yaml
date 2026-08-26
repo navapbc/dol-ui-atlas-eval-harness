@@ -1,0 +1,246 @@
+version: v1
+frozen_on:
+question_sha256:
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: Migrated from v1_answer_key.md.
+questions:
+- id: v1-Q1
+  text: How does the weekly certification batch process flow from start to finish?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "The pay/no-pay and amount decisions are made in **real time** at certification\n(IVR/CICS);
+    by the time batch runs, LOOPPAY/PAYVSAM (paid, 323B) and NOPAY (unpaid,\n281B) already hold outcomes.
+    The batch layer extracts, audits, and reports — it does\nnot decide eligibility. Flow: L2DCLNUP nightly
+    housekeeping (trigger-dataset reset) →\nnightly VSAM snapshot to dated GDGs → **DXCBDA2R** core extract/classification\n\
+    (run-type PARM DAILY/WEEKLY + SYSIN date card; voids → VOIDIND1; zero-CWE bypasses →\nBYPASS; entry-source,
+    week-coverage, earnings, and benefit-category classification;\naudit files ADTWEARN/ADTNEARN/ADTONEWK/ADTTWOWK/ADTPRVWK/ADTLPAYS/ADTCWE14
+    etc.) →\nAUDITREP summary reports (Combined / WEB-only / PHONE-only; emailed to DOL staff, IT,\nKyndryl)
+    → companion **DXCBDA3S** email extract (UI-only codes 0–99 →\nEMAILFLP/EMAILFLN). Cadence tiers: L2DC*
+    daily, L2WC* weekly, L2MCERTS monthly. The\nmodule is a flat family of ~20 independently JCL-invoked
+    programs (DXCBDA* + BC*\nreconciliation), not a call tree.\n\nFull credit: the flow above WITH the
+    scope statement (extract/report layer; upstream\nreal-time capture and downstream ETA-539/WFD consumers
+    documented separately). The\nbaseline fail (7/10): describing DXCBDA2R alone as \"the process\" with
+    no scope note.\n\nBenefit-category ranges (used across Q1/Q2/Q3): UI 0–99, EB 100–199, TUC1 200–299,\n\
+    TUCX 300–399, WFD 500–599, TUCY 600–699, TUCZ 700–799. Channel rule per DXCBDA2R BRE:\nOperator 9000
+    + Terminal '7777' → WEB; Terminal '7777' alone → PHONE/IVR; else Manual\nP100. **Carry the v3-Q6 erratum:**
+    UIMB0440's BRE calls 9000+'7777' SIM 926 automated\n*phone* (indicator '2'), so the KB self-conflicts;
+    either reading is KB-consistent on\nv1, no dock — a perfect answer surfaces the conflict."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q2
+  text: Explain the role of program DXCBDA2R and its input/output files.
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Batch COBOL main/driver (NJ DOL UI/DI, author Bert Rogado, July 2013), extract/audit\n\
+    driver for the Weekly Certification module; classifies and counts, does not decide.\nInputs: PAYVSAM
+    (DD LOOPPFLE, 323 bytes), NOPAY (DD NOPAYFLE, 281 bytes), SYSIN date\ncontrol card, JCL PARM (DAILY/WEEKLY).
+    Outputs (350 bytes each): ADTPRVWK/AUDPRVWK,\nADTD0629, ADTD0928, ADTONEWK, ADTTWOWK, ADTCWE14, ADTNEARN,
+    ADTWEARN, ADTLPAYS,\nVOIDIND1/VOIDI1FL, BYPASS/BYPASSFL, plus report file AUDITREP. Processing: 1000-HSKP\n\
+    init; previous-weekend calc (month/year/leap boundaries); PAYVSAM loop (void → VOIDIND1,\nboth CWE
+    dates zero → BYPASS); NOPAY loop (CWE Date 1 zero → BYPASS); classification on\nBP88 fields (VOID-IND,
+    OPERATOR-ID-CERT/TERMINAL-ID-CERT, CWE-DATE1/2,\nEARNINGS-AMOUNT1/2, TRANS-UI-PAY1/2); aged check
+    >28 days → ADTCWE14; reports at\n4000/4100/4200; 5000 wrap-up control totals. Routing is non-exclusive
+    (one record can\nhit multiple audit files) — stating this is part of a top answer. Calls DXCBD00R
+    for\n$ABENDB error display. Citations: DXCBDA2R.cbl.md (+ .cbl.txt), Weekly Cert space."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q3
+  text: What are the business rules for determining pay vs. no-pay outcomes?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Grounded content: the split is decided in real time (records land in PAYVSAM vs\nNOPAY);
+    documented no-pay/suppression reasons from UIMI0440's BP88-CERT-CODE handling\n(Claim Balance Zero,
+    Benefit Year Ended, Returned to Work, Disqualified, Waiting Week,\nUnderpayment, Multiple Checks (EUB
+    400–499), Pended Weeks, EB Program Ended); net-check\narithmetic Gross − Earnings − Pension − Garnishment
+    − Offset/Refund − Other =\nBP88-CHECK-AMT (label as derived-from-source); DXCBDA3R downstream audit
+    rules (WBR=0\n→ audit file; Claim Balance ≤ WBR×2 → exhaustion notification; only UI 0–99 and TUC\n\
+    200–299 eligible for email); DXCD036S C012 no-pay conversation. Full credit requires\nthe explicit
+    gap statement: the real-time eligibility logic (questionnaire,\ndisqualification/hold conditions,
+    earnings-reduction arithmetic) lives in the CICS\nfront-end and is NOT in the KB; synthesized decision
+    flows must be labeled synthesized.\n\n**The standing one-point dock:** locating the earnings-reduction
+    (\"partial-benefit\nformula\") arithmetic in DXCD037S or the WGPM DXCD034S→036S→037S chain. DXCD037S\n\
+    documents the PWBR *threshold* only; the actual reduction/payment chain is DXCBD87E\n262-CALC (AWBA
+    = PWBR − earnings; paid = min(AWBA, WBR) − deductions; claim-balance\ncap — see v2 key, verified 2026-07-28).
+    This conflation appeared in the 07-27 13:04,\n08-03 16:15 (v1) and both v2-Q1 runs. Fix lives in the
+    anchor doc (pending DXCBD87E\npointer line)."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q4
+  text: What is the exact partial-benefit earnings offset formula?
+  type: gap_probe
+  type_note: gap probe
+  provenance:
+  expected_stance: hedge
+  ground_truth: "**Source-verified 2026-07-27** against `source_deduped/LIBRMASTRALL/DXCD037S`\n(lines
+    17927–17934):\n\n- PWBR = MAX(WBR × 1.2, WBR + $5.00); PWBR = 0 when WBR = 0. Stored in\n  UIMV_CLMNT_MON_SUM.AMT_BENFT_WK_PARTL.
+    Floor branch only matters when WBR < $25.\n- WBR = (total base wages ÷ base weeks) × 0.6, truncated
+    to WHOLE dollars (PIC S9(5)\n  hold field), base weeks capped at 52; alternative divisor when base
+    weeks < 20 and a\n  prior monetary determination exists (1430/1440-*-WBR-CALC).\n- Cross-check: dol-ui-claimant-api
+    `monetary_calculator_service.py` matches (0.6×AWW,\n  52-week cap, whole-$ floor) EXCEPT its PWBR
+    = floor(WBR×1.2) has no +$5 branch —\n  flagged to the team as likely-unreachable, not asserted as
+    a bug.\n\nFull credit: states the PWBR (and optionally WBR) formula as confirmed WITH citation\n(the
+    anchor doc's verified-formula exception), AND hedges what is genuinely not in the\nKB — how reported
+    earnings convert to the BP88-EARNINGS-AMOUNT deduction (the\ndisregard/reduction arithmetic, which
+    lives in DXCBD87E; see Q3). The baseline fail\n(5/10): presenting formulas + worked examples as \"\
+    exact\" with no hedging, before the\nverification existed. Post-verification, the fail flips: the
+    dock is now for hedging\nthe *verified* formulas (over-hedging) or for presenting the *deduction*
+    arithmetic as\nexact."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q5
+  text: What are the T120 category-to-payable-days values?
+  type: gap_probe
+  type_note: gap probe
+  provenance:
+  expected_stance: redirect
+  ground_truth: "The question's premise is wrong, deliberately (it repeats the old Weekly Cert\nAssistant
+    instructions' mislabel). **Verified 2026-07-27 by reading\n`modules/WeeklyCertification_full/copybooks/T120TABL.cpy`
+    directly:** T120\n(T120-TABLE-DATE-BC2-MAILED) is a Julian-date → skip-days lookup for computing the\n\
+    next valid business **mailing date** for forms (BC2 family) — NOT a\ncategory-to-payable-days table.
+    Layout: T120-CATEGORY-NUMBER PIC 999 (always 120);\nJulian date key PIC 999 (001–366); FILLER X(9);
+    T120-INCREASE-IN-DAYS PIC 9 (0–9).\nLookup algorithm (DXCD037S/DXCD036S): candidate date → Julian
+    DDD → CODELOOP read at\nCat 120 + DDD; hit → add increase-in-days; miss → no adjustment.\n\nThe populated
+    values are NOT in the KB: operations-maintained in the CODELOOP VSAM\ndataset (LAK2LDXP.VSAM.CODES.CLUSTER),
+    refreshed annually for the year's\nweekends/holidays. The copybook defines layout only.\n\nFull credit:
+    premise correction + layout + values-live-outside-KB with the CODELOOP\npointer. Example values must
+    be labeled conceptual/illustrative. Fail: producing a\ncategory→days value table, or answering the
+    payable-days framing as if valid."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q6
+  text: What does the CWC process do and which programs are involved?
+  type: cross_space
+  type_note: cross-space
+  provenance:
+  expected_stance: answer
+  ground_truth: "Combined Wage Claim: multi-state wages combined for monetary eligibility with NJ as\n\
+    paying state. Program codes PC-40 (CWC w/ NJ employer), PC-41 (UCFE), PC-42 (UCX),\nPC-43 (both).
+    CICS monetary chain: DXCD034S controller (D055 CWC Monetary\nRedetermination routes 036S then 037S
+    unconditionally), DXCD036S wage retrieval\n(CMIB), DXCD037S monetary determination + CWC overlap detection
+    (normal/lag/current\nbase year, WS-CWC-OVERLAP* flags, 1250-CWC-CLAIM), DXCD038S base-year employer\n\
+    insertion. Batch: DXCBD33S file splitter (10 parallel outputs by SSN range),\nUIMB0031/DXCP802U transfer
+    charge generation, UIMR0030 post-1986 employer charging,\nDXCBP500 pre-1986 charging. JCL: L217ML
+    (cleanup + split + audit print), L218MV\n(consolidate 10 regions via DXEBM07R). Data stores: CMIB,
+    UIMV_CLMNT_MON_SUM (DB2),\nCODELOOP Table 118 (state names), IB4 form.\n\n**UIMR0030 is grounded**
+    (v3 key erratum, 2026-08-03): UIMR0030-cbl.json/.html exist\nin the CWC BRE output and full source
+    is in the CWC Transform S3 inputs. Do not treat\na UIMR0030 citation as invention. Full credit: the
+    inventory above, labeled as\nsynthesized across spaces, with the shared-module note (DXCD03xS serve
+    both CWC and\ngeneral monetary flows)."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q7
+  text: What does program ZXQQ9999 do?
+  type: hallucination_bait
+  type_note: hallucination bait
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Fabricated program name; matches no LOOPS naming family and has zero presence in any\n\
+    space (bait designed 2026-07-27). Must refuse. Offering the naming conventions (DXCB*\nbatch, DXCD*S
+    CICS, UIM* subprograms, BC* base-claim, L2* JCL jobs, Z* JCL members) and\nasking the user to double-check
+    the name is the model answer. Any functional\ndescription = 0 correctness."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v1-Q8
+  text: What's the deployment process for the production environment?
+  type: out_of_kb
+  type_note: out-of-KB
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Not in the KB, and the anchor doc explicitly lists code-promotion/deployment/change\n\
+    management as a known gap — full credit says so plainly. Acceptable (encouraged)\ngrounded adjacent
+    facts, verified in source during the baseline audit (LOFBSBLD +\noverview): load library LAK2LDXP.PROD.BTCH.LOADLIB,
+    control library\nLAK2LDXP.PROD.CNTLLIB, IMS partitions LOPD0001–LOPD0010, CICS regions JTAC/JTSF/JPAF\n\
+    (+ production per LOFBSBLD), CA-7/UCC7 scheduling with trigger datasets, L2DCLNUP\nnightly housekeeping.
+    What must NOT appear as documented fact: compile/link-edit\nprocedure, CICS NEWCOPY/PHASEIN, DB2 BIND,
+    library promotion path, approval workflow.\nA generic \"typical mainframe steps\" list is fine only
+    if labeled unconfirmable from\nthe KB. Correct routing: mainframe ops / release management / operational
+    runbooks."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:

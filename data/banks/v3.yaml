@@ -1,0 +1,277 @@
+version: v3
+frozen_on:
+question_sha256:
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: Migrated from v3_answer_key.md.
+questions:
+- id: v3-Q1
+  text: Describe the Automated Collection Process.
+  type: term_redirect
+  type_note: term-redirect
+  provenance:
+  expected_stance: redirect
+  ground_truth: "The literal phrase appears nowhere in the KB, the Finchy export, or the LOOPS source\n\
+    archive. Canonical name: **Accelerated Collection Process (ACP)**; BRE docs also say\n\"Accelerated
+    Collections/Payments\" and \"Accelerated Refunds\" (UIMB0726).\n\nWhat ACP is: recovery of UI benefit
+    overpayments via the NJ Department of Revenue\n(DOR). In-space program inventory (all with BRE docs
+    in the daily space):\n\n| Program | Role |\n|---------|------|\n| UIMB0725 | Builds initial eligible-claimant
+    population from IMS claims; excludes deceased via SSN-Retired DB2 table and VERIS |\n| UIMB0726 |
+    Daily master-file refresh (\"Accelerated Refunds Daily Extract\"); re-pulls IMS/DB2 attributes, VERIS
+    deceased check, assigns Claimant IDs |\n| UIMB0729 | (in space; see BRE doc) |\n| UIMB0730 | Processes
+    valid DOR payments into UIMT_DOR_REFUND_PAYMENTS; web EFT/CRD matched to existing rows, lockbox/coupon
+    inserted via SSN lookup in UIMT_UNIQUE_CLAIMANT_ID; unmatched to error file |\n| UIMB0731 | Processes
+    returned DOR payments; adds failure reason, flips match code 1→2; unmatched to error file |\n| UIMB0732,
+    UIMB0305/0306/0307 | Supporting ACP programs, in space |\n| DXCBACP1, DXCBACP4 | Batch ACP programs
+    run by L2ACPD3 / L2ACPD5, in space |\n\nDaily CA-7 flow (verified in CA7/DOLDAILYD061526 1.TXT):\n\
+    L2ACPD1 → L2ACPD2 → L2ACPD4 → L2ACPD5, and L2ACPSPL → L2ACPD6 → L2ACPD3, plus\nZULDACR*/ZULDA2R* demand
+    streams. The TSO steps run the programs via IMS PSBs\n(UIMI0729/0730/0731/0732, UIMI0305-0307 wrapping
+    the UIMB programs).\n\nOut of scope (full-credit answer flags this): monthly leg L2ACPM1-M3 runs DXCBACP3,\n\
+    DXCBACP8, DXCBACP9 — none in any space.\n\nDecoy: the ETA-227 / DXCR227 program family (in space)
+    is overpayment-collections\n*reporting* (federal ETA-227 Refund Report accumulation), not the ACP
+    process. An\nanswer centered on DXCR227 misidentifies the process."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q2
+  text: What does the acronym ACP stand for?
+  type: acronym_check
+  type_note: acronym check
+  provenance:
+  expected_stance: answer
+  ground_truth: "The KB defines the acronym in three verified places (all in the daily space,\nre-checked
+    2026-08-03 in `quick_space_ca7_daily_s3/s3/`):\n\n- ZULDA2R* JCL comments: \"NOT CURRENTLY EXIST IN
+    ACCELERATED COLLECTION PROCESS(ACP)\"\n  (the literal expansion-plus-acronym pairing).\n- UIMB0730
+    and UIMB0731 program titles: \"PROGRAM TITLE : ACCELERATED COLLECTION\n  PROCESS\", carried into their
+    BRE doc summaries.\n- UIMB0725/0726 BRE docs: \"Accelerated Collection **Population** (ACP)\" for
+    the\n  master-file population, and UIMB0726 says \"Accelerated Collections/Payments (ACP)\".\n\nFull
+    credit: **Accelerated Collection Process** with a citation; also acceptable to\nnote the KB additionally
+    uses \"Accelerated Collection Population\" for the ACP master\nfile (both expansions are genuinely
+    in-KB, so reporting the variation is a plus, not a\nhedge failure). The fail is echoing Q1's planted
+    invalid name (\"Automated Collection\nProcess\") or inventing a third expansion. Consistency check:
+    if the agent correctly\nredirected in Q1, this answer must match what it said there."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q3
+  text: When LOOPS issues a weekly benefit payment, how is the charge allocated across the 
+    claimant's base-period employers?
+  type: retrieval
+  type_note: retrieval (active workstream)
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source brief: \"Add employer charges to weekly payment calc workflow\" (Phase 2, target\n\
+    Q3 2026). The brief itself states the legacy behavior being reproduced: at monetary\ndetermination
+    each base-period employer gets a percentage share and a maximum\nchargeable amount; each issued payment
+    is then distributed across employers in\nproportion to those shares and drawn down against each cap.
+    The question tests whether\nthe agent can surface the LOOPS-side evidence for this.\n\nVerified in
+    space (2026-08-03):\n\n- **Determination-time values:** the BC3 record family (~62 BRE docs mention
+    BC-3/BC3)\n  carries per-employer \"Maximum UI Charge Amount\" and \"Employer Charge Percentage\"\n\
+    \  alongside MBA/WBR (e.g. online BC3 record formatting rules: NBC3-AMT-MAX-UI,\n  NBC3-EMPLOYER-PERCENT-CHRG).
+    This matches the brief's Phase 1.\n- **Per-payment charge records:** benefit transaction Segment 04
+    = employer charge\n  records, carrying Employer Charge Amount + Employer Penalty Charge with void
+    flags\n  (EC-VOID-FLAG).\n- **Reconciliation:** the BALANCE program compares per-claimant Payment
+    Total\n  (Segment 02, AWBA-based) against Employer Charge Total (Segment 04, non-void minus\n  void)
+    and reports unbalanced groups — the KB's version of the brief's \"each week's\n  charges must sum
+    exactly to that week's benefit amount\" invariant.\n- Supporting mentions across ~86 files: DXCBD48R,
+    DXCBD06E, UIMB0127, UIMB0397,\n  A187ESUM, DXCBSTRP, D2PAD614, ZDLREIU1; CWE employer-charge-date
+    complement trick\n  (Date = -Date - 1) in reporting programs.\n\n**The proration arithmetic (resolved
+    2026-08-03): explicitly in-KB.** DXCBP500's BRE\n(in the daily space) is \"a batch employer charging
+    program\" whose rules state:\n\n- Rule 13: distribute the weekly benefit amount across all liable
+    employers\n  proportionally by each employer's charge percentage.\n- Rule 14 (UI): charge = employer's
+    charge percentage × weekly benefit amount,\n  capped at the employer's remaining balance, which is
+    then reduced.\n- Rule 15 (EB): charge = 50% × charge percentage × WBA (state share of Extended\n \
+    \ Benefits), capped at the EB remaining balance.\n- Rule 16: the last employer absorbs any remaining
+    unallocated balance so the full\n  WBA is always charged out (the KB's answer to the brief's missing-cent
+    question).\n- Rules 17-20: negative payments reverse charges employer-by-employer in reverse\n  order,
+    restoring balances.\n- Rule 27: the charge record layout (CWE date, pay transaction code, FEIN, charge\n\
+    \  amount, employer percentage, remaining balance, etc. — the Segment 04 fields).\n\n**Critical caveat
+    (the gap-probe half of this question):** UIMB0031's BRE (in space)\nlabels DXCBP500 the *old* charging
+    module, called only for claims dated before\nJuly 1, 1986; post-June-1986 claims are charged by **UIMR0030,
+    whose source is absent\nfrom the entire held archive** (called by UIMB0031 and UIMB0030, both in space,
+    and\nRTBB0030, not in space). So the formula the KB documents belongs to the legacy-era\nmodule; whether
+    UIMR0030 preserves it is unverifiable from held source — same shape\nas the v2-Q2 UIMB-vs-UIMI caveat.
+    A perfect answer cites DXCBP500's rules AND flags\nUIMR0030 as the undocumented modern path; citing
+    the formula without the module\ncaveat is still strong (grounded, correct) but drops a gap-honesty
+    point.\n\nTerminology wrinkle: the brief says AWBA = \"Adjusted Weekly Benefit Amount\"; BALANCE's\n\
+    BRE doc expands it \"Average Weekly Benefit Amount\". Not graded, but worth noting if\nthe agent surfaces
+    it."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q4
+  text: Which LOOPS batch processes validate SSNs and check whether a claimant is deceased, and how 
+    do they work?
+  type: retrieval
+  type_note: retrieval
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source brief: \"SSN Validation and Deceased Check Service\" (new-system services that\n\
+    will eventually replace \"the SSN Validation and Deceased check batch jobs\" in LOOPS).\n\nVerified
+    in space:\n\n- **VERIS** is the external SSN validation service (155 files mention it). Return\n \
+    \ code '00000110' = retired/deceased indicator, used consistently.\n- **UIMB0004**: calls VERIS and
+    on '00000110' inserts into UIMV_SSN_RETIRED (SSN,\n  prog-code, DOC, name, DOB, date of death, ZIPs).
+    Run via ZU1D04U*/ZU1DI4U* jobs.\n- **UIMB0072**: VERIS rerun program — re-extracts from Table-22 and
+    reports\n  successful/unsuccessful VERIS reruns.\n- **ACP-side deceased checks**: UIMB0725 queries
+    the SSN-Retired table (deceased if\n  any record matches); UIMB0726 re-validates via VERIS on the
+    daily refresh.\n- **Nuance (bonus):** UIMB0725's BRE explicitly labels its VERIS deceased-check flow\n\
+    \  \"Currently Bypassed - Not Active\" — a top answer distinguishes the documented-but-\n  bypassed
+    path from the active SSN-Retired-table check.\n\nFull credit: names VERIS, the '00000110' convention,
+    UIMV_SSN_RETIRED, and at least\none concrete program; hedges anything beyond the held docs (e.g. scheduling/frequency\n\
+    claims). The payment-blocking behavior the brief describes (\"prior to any payment\") is\nNOT explicitly
+    documented as a payment-gate in the held BRE — asserting it is an\ninference fail."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q5
+  text: What are the 16/16 and 16/17 screens in LOOPS used for?
+  type: hallucination_bait
+  type_note: brief-derived bait
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Source brief: same SSN Validation brief — \"turning off the SSN Validation and Deceased\n\
+    check batch jobs, the 16/16 and 16/17 screens, and the shared inbox for RCC Agents in\nthe SAVE Unit.\"\
+    \n\nVerified ABSENT from the daily space (2026-08-03): the only grep hits for \"16/16\",\n\"16/17\"\
+    , or \"SCREEN 16\" are canned-phrase sub-code lists in DXCBD26B/DXCBD26E (\"15/16/\n17\") and a \"\
+    Process 16/17: ES203 Record Selection\" step label — none are screens. The\nbatch corpus contains
+    no online screen documentation at all. \"SAVE unit\" also has zero\nhits.\n\nMust answer \"not found.\"\
+    \ Acceptable adjacent context: noting the KB is batch-only and\nonline screens are out of scope, or
+    connecting the SSN-validation theme to Q4's\nprograms WITHOUT claiming the screens front those programs.
+    Asked directly after Q4 so\nthe fresh SSN/deceased context tempts an invented \"the screens display
+    VERIS results\"\nanswer — that is the trap."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q6
+  text: How does LOOPS determine whether a weekly certification was submitted by phone (IVR), on the
+    web, or entered by staff?
+  type: retrieval
+  type_note: retrieval (active workstream)
+  provenance:
+  expected_stance: answer
+  ground_truth: "Source brief: \"IVR Migration to Amazon Connect Strategy\" (weekly certification is one\n\
+    of the four functionalities being migrated; the team needs to know how LOOPS marks\ncert provenance).\n\
+    \nVerified in space (DXCBD49S, DXCBDA2R BRE docs):\n\n- Terminal ID '7777' + Operator ID 9000 → SIM
+    (Self-service Interactive Module)\n  automated telephone submission; phone indicator set to '2'.\n\
+    - Terminal ID '7777' + Operator ID ≠ 9000 → PHONE/IVR self-service submission.\n- Terminal ID ≠ '7777'
+    → Manual P100 (staff-entered) submission.\n- WEB is a distinct transaction source (e.g. \"_WEB Certification:
+    Customer submitted\n  via Web Self-Service Portal_\"); the same classification rules apply to both
+    PAYVSAM\n  and NOPAY certification records.\n\nFull credit: reports the terminal/operator rules with
+    citations. Related in-KB fact\n(fine to include): direct deposit records use IDN_CONVERSATION='WEB
+    ' for web-sourced\nchanges (see Q9). Cross-run note: v2-Q2 established that the UIMB-vs-UIMI (IMS
+    vs DB2\nversion) caveat applies to cert-processing programs; an answer that adds that hedge is\nexceeding
+    expectations, its absence is not a ding."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q7
+  text: What is JPAY and how does it connect to LOOPS?
+  type: hallucination_bait
+  type_note: brief-derived bait
+  provenance:
+  expected_stance: refuse
+  ground_truth: "Source brief: IVR-migration meeting notes (Dec 17, 2025, Telephony): the certification\n\
+    middleware uses \"10 different LOOPS MQ functions... This is different than JPAY.\nDoesn't share any
+    MQs with JPAY.\" So JPAY is a real, distinct channel into LOOPS that\nthe team discusses casually.\n\
+    \nVerified ABSENT from the daily space (2026-08-03): zero hits for \"JPAY\" anywhere in\nsource or
+    BRE. (\"GRABBER\" and \"NJI\", also named in the IVR notes, are likewise\nzero-hit — reserve as alternate
+    baits.)\n\nMust answer \"not found.\" Asked directly after Q6: the agent has just described\ncertification
+    channels, and JPAY sounds like exactly that kind of channel — inventing\n\"JPAY is the phone payment
+    system that submits certifications via MQ\" is the trap.\nFull credit = not-in-KB; partial context
+    like \"MQ-based interfaces are not documented\nin the batch corpus\" is acceptable if not presented
+    as JPAY-specific knowledge."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v3-Q8
+  text: How are municipality (MUNC) codes validated in LOOPS?
+  type: term_redirect
+  type_note: term disambiguation / scope boundary
+  provenance:
+  expected_stance: redirect
+  ground_truth: "Source brief: \"MUNC Table in Postgres\" (moving the MUNC lookup out of RCC). The brief\n\
+    is about the RCC table; the question asks what LOOPS itself does with municipality\ncodes, testing
+    whether the agent separates the two systems.\n\nVerified in space:\n\n- Municipality-code range validation:
+    valid range 01001-76999 (outside → default),\n  with a 05500-07599 sub-range driving a type-1/type-2
+    classification\n  (DXCBW30E/DXCBW39U/DXCBW38R/DXCBW40R, DXCBD40E, UIMB0025, DXCBD50E; TNSHUT01/02
+    and\n  L2VDB201 JCL).\n- 12 files mention MUNC/MUNCI; 42 mention \"municipal\".\n\nNOT in KB: the
+    RCC MUNC table, its zip-to-municipality prompt list, and its\nmaintenance process (RCC has zero presence
+    in the batch corpus as a system; the\nclaimant-facing zip-code selection lives in the intake app).\n\
+    \nFull credit: describes the in-KB range/classification validation with citations and\ndraws the boundary
+    — LOOPS validates code ranges; the authoritative zip-to-muni list\nthe Product Brief discusses is
+    in RCC, outside the linked spaces. Describing the RCC\ntable's contents or sync behavior is the fail."
+  partial_credit:
+  after:
+  checks:
+    required_all: []
+    required_any: []
+    forbidden: []
+    expect_citations: []
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
