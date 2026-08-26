@@ -1,0 +1,27 @@
+version: v1
+frozen_on: 2026-08-03
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: |
+  Two-question fixture exercising nesting, run-order dependency and checks.
+questions:
+  - id: v1-Q1
+    text: Describe the Automated Collection Process.
+    type: retrieval
+    expected_stance: answer
+    ground_truth: |
+      Maps to the Accelerated Collection Process and describes the DOR payment flow.
+    checks:
+      required_all: [ACP]
+      expect_citations: [UIMB0730, L2ACPD]
+  - id: v1-Q2
+    after: v1-Q1
+    text: What does the acronym ACP stand for?
+    type: term_redirect
+    type_note: term-redirect
+    expected_stance: redirect
+    ground_truth: |
+      Accelerated Collection Process. Echoing the planted name is the failure.
+    checks:
+      required_any: ["Accelerated Collection Process"]
+      forbidden: [ETA-227]
