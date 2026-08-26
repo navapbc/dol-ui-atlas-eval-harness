@@ -226,11 +226,18 @@ def import_review(
             index[q.id] = (p, q)
 
     planned: dict[Path, dict[str, Transition]] = {}
+    seen_ids: set[str] = set()
 
     for row in read_review(path):
         qid = _text(row.get("id"))
         if not qid:
             continue
+        if qid in seen_ids:
+            report.errors.append(
+                f"{qid}: duplicate id in the sheet; each question may appear at most once"
+            )
+            continue
+        seen_ids.add(qid)
         if qid not in index:
             report.errors.append(
                 f"{qid}: unknown question id; it is not in any bank under {banks_dir}"
@@ -268,6 +275,10 @@ def import_review(
         existing_notes = _text(row.get("notes"))
         notes = comments or existing_notes or None
 
+        # verified_on is deliberately excluded: a re-review that carries no new
+        # information (same status, reviewer, and notes) should not churn the
+        # record with a new date, so it is reported as unchanged rather than
+        # rewriting the file just to bump the date.
         unchanged = (
             question.verification.status is new_status
             and question.verification.verified_by == reviewer

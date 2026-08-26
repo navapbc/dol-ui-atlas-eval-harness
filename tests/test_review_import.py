@@ -33,14 +33,52 @@ questions:
 """
 
 
-def _banks_dir(tmp_path):
+BANK_YAML_V4 = """version: v4
+frozen_on: 2026-08-03
+question_sha256: PLACEHOLDER
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+questions:
+  - id: v4-Q1
+    text: What is the ETA-227?
+    type: term_redirect
+    type_note: term-redirect
+    expected_stance: redirect
+    ground_truth: |
+      A quarterly report on collection activity.
+    checks:
+      required_all: [ETA-227]
+  - id: v4-Q2
+    after: v4-Q1
+    text: What does the acronym ETA stand for?
+    type: acronym_check
+    expected_stance: answer
+    ground_truth: |
+      Employment and Training Administration.
+"""
+
+
+def _write_bank(d, name, yaml_text):
     from atlas_eval.dataset import compute_question_sha256
+    p = d / name
+    p.write_text(yaml_text)
+    bank = load_bank(p)
+    p.write_text(yaml_text.replace("PLACEHOLDER", compute_question_sha256(bank)))
+    return p
+
+
+def _banks_dir(tmp_path):
     d = tmp_path / "banks"
     d.mkdir()
-    p = d / "v3.yaml"
-    p.write_text(BANK_YAML)
-    bank = load_bank(p)
-    p.write_text(BANK_YAML.replace("PLACEHOLDER", compute_question_sha256(bank)))
+    _write_bank(d, "v3.yaml", BANK_YAML)
+    return d
+
+
+def _two_banks_dir(tmp_path):
+    d = tmp_path / "banks"
+    d.mkdir()
+    _write_bank(d, "v3.yaml", BANK_YAML)
+    _write_bank(d, "v4.yaml", BANK_YAML_V4)
     return d
 
 
@@ -60,6 +98,14 @@ def _roundtrip(tmp_path, edits):
     banks = _banks_dir(tmp_path)
     xlsx = tmp_path / "review.xlsx"
     export_review([load_bank(banks / "v3.yaml")], xlsx)
+    _sheet(xlsx, edits)
+    return banks, xlsx
+
+
+def _roundtrip_multi(tmp_path, edits):
+    banks = _two_banks_dir(tmp_path)
+    xlsx = tmp_path / "review.xlsx"
+    export_review([load_bank(banks / "v3.yaml"), load_bank(banks / "v4.yaml")], xlsx)
     _sheet(xlsx, edits)
     return banks, xlsx
 
@@ -193,3 +239,65 @@ def test_import_is_idempotent(tmp_path):
     second_report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
     assert second_report.transitions == []
     assert (banks / "v3.yaml").read_bytes() == first
+
+
+def test_multi_bank_verdicts_land_in_the_correct_file(tmp_path):
+    banks, xlsx = _roundtrip_multi(tmp_path, {
+        "v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"},
+        "v4-Q1": {"accurate?": "no", "reviewer": "Priya", "comments": "Needs a source."},
+    })
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+    assert report.ok, report.errors
+
+    v3 = load_bank(banks / "v3.yaml")
+    v4 = load_bank(banks / "v4.yaml")
+    assert v3.questions[0].id == "v3-Q1"
+    assert v3.questions[0].verification.status is VerificationStatus.VERIFIED
+    assert v3.questions[0].verification.verified_by == "Oscar"
+    assert v4.questions[0].id == "v4-Q1"
+    assert v4.questions[0].verification.status is VerificationStatus.REJECTED
+    assert v4.questions[0].verification.verified_by == "Priya"
+
+    # Verdicts must not bleed into the sibling bank's untouched questions.
+    assert v3.questions[1].verification.status is VerificationStatus.UNVERIFIED
+    assert v4.questions[1].verification.status is VerificationStatus.UNVERIFIED
+
+
+def test_invalid_row_in_one_bank_aborts_writes_to_every_bank(tmp_path):
+    """The realistic corpus is several bank files reviewed in one sheet; a single
+    bad row anywhere must block writes to all of them, not just its own file."""
+    banks, xlsx = _roundtrip_multi(tmp_path, {
+        "v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"},
+        "v4-Q1": {"accurate?": "yes"},  # missing reviewer name
+    })
+    before_v3 = (banks / "v3.yaml").read_bytes()
+    before_v4 = (banks / "v4.yaml").read_bytes()
+
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+
+    assert not report.ok
+    assert any("v4-Q1" in e and "reviewer" in e.lower() for e in report.errors)
+    assert (banks / "v3.yaml").read_bytes() == before_v3, (
+        "a validation failure in v4 must abort v3's writes too"
+    )
+    assert (banks / "v4.yaml").read_bytes() == before_v4
+
+
+def test_duplicate_id_in_sheet_aborts(tmp_path):
+    banks, xlsx = _roundtrip(tmp_path, {"v3-Q1": {"accurate?": "yes", "reviewer": "Oscar"}})
+    wb = load_workbook(xlsx)
+    ws = wb["Review"]
+    duplicate_row = [c.value for c in ws[2]]
+    assert duplicate_row[0] == "v3-Q1"
+    ws.append(duplicate_row)
+    wb.save(xlsx)
+
+    before = (banks / "v3.yaml").read_bytes()
+    report = import_review(xlsx, banks, reviewed_on=date(2026, 8, 28))
+
+    assert not report.ok
+    assert any(
+        "v3-Q1" in e and "duplicate" in e.lower() and "at most once" in e.lower()
+        for e in report.errors
+    )
+    assert (banks / "v3.yaml").read_bytes() == before, "abort must write nothing at all"
