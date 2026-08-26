@@ -42,6 +42,19 @@ def _cmd_freeze(args: argparse.Namespace) -> int:
     path = Path(args.bank)
     bank = load_bank(path)
 
+    if bank.frozen_on is not None and not args.force:
+        print(
+            f"error: {path.name} is already frozen (frozen_on: {bank.frozen_on}).\n"
+            "Editing a frozen question's text and re-freezing rewrites the hash "
+            "without changing history: historical scores still point at the old "
+            "question, and once the hash moves they silently point at nothing. "
+            "Bank content that changes after freezing belongs in a new bank "
+            "version, not a rewritten hash.\n"
+            "Pass --force only if you are certain no historical score depends on "
+            "this bank's current text."
+        )
+        return 1
+
     issues = validate_bank(bank, path.name)
     # A hash mismatch is expected here: that is what we are about to rewrite.
     blocking = [i for i in issues if i.code != "FROZEN_HASH_MISMATCH"]
@@ -153,6 +166,10 @@ def main(argv: list[str] | None = None) -> int:
     p_freeze = sub.add_parser("freeze", help="stamp frozen_on and question_sha256")
     p_freeze.add_argument("--bank", required=True)
     p_freeze.add_argument("--date", required=True, help="freeze date, YYYY-MM-DD")
+    p_freeze.add_argument(
+        "--force", action="store_true",
+        help="re-freeze a bank that is already frozen, rewriting its hash",
+    )
     p_freeze.set_defaults(func=_cmd_freeze)
 
     p_review = sub.add_parser("review", help="SME review round trip")
