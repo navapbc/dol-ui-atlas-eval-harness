@@ -40,7 +40,7 @@ questions:
   type: absence_probe
   type_note: near-name discrepancy (rule a both directions + rule c)
   provenance:
-  expected_stance: answer
+  expected_stance: refuse
   ground_truth: "DXCB098B (digit zero) exists NOWHERE: not in any space, not in JCLIBALL (30,476\nmembers,
     names and contents), not in LIBRMASTRALL (10,084). The real program is\nDXCBO98B (letter O): `source/cobol/DXCBO98B.txt`
     + `bre/cobol/DXCBO98B.md` in the\ndaily space, executed at ZUMDA2R1 step DXCBO98B (JCL line 284),
@@ -132,7 +132,7 @@ questions:
   type: out_of_kb
   type_note: operational scope boundary
   provenance:
-  expected_stance: answer
+  expected_stance: refuse
   ground_truth: "Ground truth (SharePoint FSTRUC Yearly JOB=L221SA doc, 2025): on-request only —\nemail
     from Labor; supplemental (April) and/or initial (November). Operator\nprocedure: DEMAND L221SC (file
     cleanup) and wait; L221SA turns the schedule bit on,\nL22199 turns it off (cancel L22199 if already

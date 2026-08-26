@@ -79,17 +79,31 @@ def test_every_map_target_is_a_real_enum_member():
     assert all(isinstance(v, QuestionType) for v in LEGACY_TYPE_MAP.values())
 
 
-def test_infer_stance_from_legacy_type():
-    assert infer_stance("hallucination bait", "Must refuse") is Stance.REFUSE
-    assert infer_stance("out-of-KB", "Should decline") is Stance.REFUSE
-    assert infer_stance("gap probe", "Should hedge") is Stance.HEDGE
-    assert infer_stance("term-redirect", "maps it to ACP") is Stance.REDIRECT
-    assert infer_stance("retrieval", "Grounded description") is Stance.ANSWER
+def test_infer_stance_from_mapped_type():
+    assert infer_stance(QuestionType.HALLUCINATION_BAIT, "Must refuse") is Stance.REFUSE
+    assert infer_stance(QuestionType.OUT_OF_KB, "Should decline") is Stance.REFUSE
+    assert infer_stance(QuestionType.GAP_PROBE, "Should hedge") is Stance.HEDGE
+    assert infer_stance(QuestionType.TERM_REDIRECT, "maps it to ACP") is Stance.REDIRECT
+    assert infer_stance(QuestionType.RETRIEVAL, "Grounded description") is Stance.ANSWER
 
 
 def test_infer_stance_prefers_explicit_behaviour_wording():
     # A retrieval question whose expected behaviour demands a refusal.
-    assert infer_stance("retrieval", "must say not found") is Stance.REFUSE
+    assert infer_stance(QuestionType.RETRIEVAL, "must say not found") is Stance.REFUSE
+
+
+def test_infer_stance_uses_mapped_type_not_raw_label_substring():
+    # Regression: these legacy labels don't contain the fallback's old
+    # substrings ("bait", "out-of-kb", "gap probe", ...) but the type map
+    # correctly routes them to absence_probe / out_of_kb, so the fallback
+    # must key off the mapped type rather than the raw label string.
+    near_name = map_legacy_type("near-name discrepancy (rule a both directions + rule c)")
+    assert near_name is QuestionType.ABSENCE_PROBE
+    assert infer_stance(near_name, "Flags the discrepancy for confirmation") is Stance.REFUSE
+
+    operational = map_legacy_type("operational scope boundary")
+    assert operational is QuestionType.OUT_OF_KB
+    assert infer_stance(operational, "Not in KB; clean KB-bounded answer") is Stance.REFUSE
 
 
 def test_parse_question_bank_splits_versions_and_rows():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from atlas_eval.migrate.type_map import map_legacy_type
-from atlas_eval.models import Bank, Checks, Question, Stance
+from atlas_eval.models import Bank, Checks, Question, QuestionType, Stance
 
 _VERSION_H2 = re.compile(r"^##\s+(v\d+)\s*\(", re.MULTILINE)
 _ROW = re.compile(r"^\|\s*(v\d+-Q\d+)\s*\|(.+?)\|(.+?)\|(.+?)\|\s*$", re.MULTILINE)
@@ -24,15 +24,28 @@ _HEDGE_CUES = ("should hedge", "needs sme confirmation", "flags kb scope",
                "must not invent a code list", "honest that")
 _REDIRECT_CUES = ("maps it to", "premise correction", "redirect")
 
+# Default stance per mapped question type, used only when no explicit
+# behaviour cue above already decided it. Categories not listed here default
+# to ANSWER.
+_TYPE_STANCE: dict[QuestionType, Stance] = {
+    QuestionType.HALLUCINATION_BAIT: Stance.REFUSE,
+    QuestionType.ABSENCE_PROBE: Stance.REFUSE,
+    QuestionType.OUT_OF_KB: Stance.REFUSE,
+    QuestionType.GAP_PROBE: Stance.HEDGE,
+    QuestionType.TERM_REDIRECT: Stance.REDIRECT,
+}
 
-def infer_stance(legacy_type: str, expected_behavior: str) -> Stance:
-    """Derive the expected stance from the legacy label and behaviour prose.
 
-    Explicit behaviour wording wins over the type label, because several
-    retrieval-labelled questions expect a refusal.
+def infer_stance(question_type: QuestionType, expected_behavior: str) -> Stance:
+    """Derive the expected stance from the mapped type and behaviour prose.
+
+    Explicit behaviour wording wins over the type category, because several
+    retrieval-labelled questions expect a refusal. The fallback keys off the
+    *mapped* `QuestionType`, not the raw legacy label string, so labels whose
+    wording doesn't literally contain a cue substring (e.g. "near-name
+    discrepancy (...)" mapped to absence_probe) still get the right default.
     """
     text = " ".join(expected_behavior.split()).lower()
-    label = " ".join(legacy_type.split()).lower()
 
     if any(c in text for c in _REFUSE_CUES):
         return Stance.REFUSE
@@ -40,13 +53,7 @@ def infer_stance(legacy_type: str, expected_behavior: str) -> Stance:
         return Stance.REDIRECT
     if any(c in text for c in _HEDGE_CUES):
         return Stance.HEDGE
-    if "bait" in label or label == "out-of-kb" or "absence" in label:
-        return Stance.REFUSE
-    if "gap probe" in label:
-        return Stance.HEDGE
-    if "redirect" in label or "disambiguation" in label:
-        return Stance.REDIRECT
-    return Stance.ANSWER
+    return _TYPE_STANCE.get(question_type, Stance.ANSWER)
 
 
 def parse_question_bank(md: str) -> dict[str, list[dict]]:
@@ -135,12 +142,13 @@ def build_bank(
             # and record which ones need a human pass.
             missing.append(row["id"])
             continue
+        question_type = map_legacy_type(row["legacy_type"])
         questions.append(Question(
             id=row["id"],
             text=row["text"],
-            type=map_legacy_type(row["legacy_type"]),
+            type=question_type,
             type_note=row["legacy_type"],
-            expected_stance=infer_stance(row["legacy_type"], row["expected_behavior"]),
+            expected_stance=infer_stance(question_type, row["expected_behavior"]),
             ground_truth=gt,
             checks=Checks(),  # filled by hand; never guessed
         ))
