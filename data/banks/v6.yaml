@@ -27,10 +27,15 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - '0001273507'
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - BNKFLMOD
+    - UIBNKDAT
+    - BNKFLBLD
+    - BUILDOUT
   verification:
     status: unverified
     verified_by:
@@ -55,10 +60,16 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - DXCBBC3E
+    - UIMT_SG03_EMPLOYER
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCB165U
+    - DXCB166U
+    - DXCBD24E
+    - UIMB0754
   verification:
     status: unverified
     verified_by:
@@ -80,10 +91,13 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - CLPY
+    - WOFF
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCRD99E
   verification:
     status: unverified
     verified_by:
@@ -105,10 +119,13 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - SKELETON
+    - SUSPENSE
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCRD88E
   verification:
     status: unverified
     verified_by:
@@ -132,10 +149,14 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - L216DB
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCBD08R
+    - DXCBD13R
+    - DXCBD04R
   verification:
     status: unverified
     verified_by:
@@ -162,10 +183,13 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - SECTION CONTIGUITY
     required_any: []
-    forbidden: []
-    expect_citations: []
+    forbidden:
+    - newest wouldn't survive
+    expect_citations:
+    - UIPBHB02
   verification:
     status: unverified
     verified_by:
@@ -186,10 +210,13 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - DXCBO56R
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - L205DRPT
+    - DXCBD90E
   verification:
     status: unverified
     verified_by:
@@ -214,10 +241,16 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
-    required_any: []
+    required_all:
+    - DB89FILE
+    required_any:
+    - L213DC.DB98FIL.DTL
+    - DB98FIL
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCRD88E
+    - DXCRD99E
+    - REPRA262
   verification:
     status: unverified
     verified_by:
@@ -250,10 +283,14 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - IDN_CONVERSATION
     required_any: []
-    forbidden: []
-    expect_citations: []
+    forbidden:
+    - Direct Deposit Sync
+    - Direct Deposit Update
+    expect_citations:
+    - UIMB0803
   verification:
     status: unverified
     verified_by:
@@ -281,10 +318,12 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - SSN/PC/DOC
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - UIMV_SSN_RETIRED
   verification:
     status: unverified
     verified_by:

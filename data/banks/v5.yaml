@@ -1,6 +1,6 @@
 version: v5
-frozen_on:
-question_sha256:
+frozen_on: '2026-08-12'
+question_sha256: 7babe64d260ef07d05f0b9ba0e838c05178d6495aa67a5c2c12f482a313cef80
 agent: engineering_onboarding_specialist
 corpus: quick_space_ca7_daily_s3
 sourcing: Migrated from v5_answer_key.md.
@@ -25,7 +25,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - ZUMDA2R1
+    - DXCBO98B
+    - NOPAYADD
     required_any: []
     forbidden: []
     expect_citations: []
@@ -40,7 +43,7 @@ questions:
   type: absence_probe
   type_note: near-name discrepancy (rule a both directions + rule c)
   provenance:
-  expected_stance: refuse
+  expected_stance: hedge
   ground_truth: "DXCB098B (digit zero) exists NOWHERE: not in any space, not in JCLIBALL (30,476\nmembers,
     names and contents), not in LIBRMASTRALL (10,084). The real program is\nDXCBO98B (letter O): `source/cobol/DXCBO98B.txt`
     + `bre/cobol/DXCBO98B.md` in the\ndaily space, executed at ZUMDA2R1 step DXCBO98B (JCL line 284),
@@ -56,10 +59,12 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - DXCB098B
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCBO98B
   verification:
     status: unverified
     verified_by:
@@ -84,7 +89,11 @@ questions:
   after:
   checks:
     required_all: []
-    required_any: []
+    required_any:
+    - 4-char
+    - four-character
+    - four character
+    - 4 characters
     forbidden: []
     expect_citations: []
   verification:
@@ -98,7 +107,7 @@ questions:
   type: scope_boundary
   type_note: scope discipline (CWE retest, re-angled)
   provenance:
-  expected_stance: answer
+  expected_stance: hedge
   ground_truth: "In held code Saturday CWE is DERIVED by construction, never validated at runtime:\n-
     UIMB0018 (`source/cobol/UIMB0018.txt` ~89200-91100): DAYS-TO-PREV-SATURDAY-VALUES\n  day-of-week offset
     tables snap dates to the Saturday prior to separation date.\n- UIMB0248 GET-DAY-OF-WEEK (~013770-014700):
@@ -117,10 +126,13 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - quarter end
     required_any: []
-    forbidden: []
-    expect_citations: []
+    forbidden:
+    - regardless of program code
+    expect_citations:
+    - JO7UD158
   verification:
     status: unverified
     verified_by:
@@ -151,7 +163,10 @@ questions:
   checks:
     required_all: []
     required_any: []
-    forbidden: []
+    forbidden:
+    - L221SA
+    - L22199
+    - PGMS21A
     expect_citations: []
   verification:
     status: unverified
@@ -205,7 +220,9 @@ questions:
     required_all: []
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - ZUMDA1R1
+    - DXCB103U
   verification:
     status: unverified
     verified_by:

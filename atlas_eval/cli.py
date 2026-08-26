@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date as _date
 from pathlib import Path
 
-from atlas_eval.dataset import load_all_banks
-from atlas_eval.validation import validate_dir
+from ruamel.yaml import YAML
+
+from atlas_eval.dataset import compute_question_sha256, load_all_banks, load_bank
+from atlas_eval.validation import validate_bank, validate_dir
 
 DEFAULT_BANKS = Path("data/banks")
 
@@ -34,6 +37,40 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_freeze(args: argparse.Namespace) -> int:
+    """Stamp frozen_on and question_sha256 in place, preserving formatting."""
+    path = Path(args.bank)
+    bank = load_bank(path)
+
+    issues = validate_bank(bank, path.name)
+    # A hash mismatch is expected here: that is what we are about to rewrite.
+    blocking = [i for i in issues if i.code != "FROZEN_HASH_MISMATCH"]
+    if blocking:
+        for i in blocking:
+            where = f"{i.bank}:{i.question_id}" if i.question_id else i.bank
+            print(f"{where}: {i.code}: {i.message}")
+        print("\nrefusing to freeze a bank with validation issues.")
+        return 1
+
+    frozen = _date.fromisoformat(args.date)
+    bank.frozen_on = frozen
+    digest = compute_question_sha256(bank)
+
+    yaml = YAML(typ="rt")
+    yaml.preserve_quotes = True
+    yaml.width = 100
+    with path.open(encoding="utf-8") as fh:
+        doc = yaml.load(fh)
+    doc["frozen_on"] = args.date
+    doc["question_sha256"] = digest
+    with path.open("w", encoding="utf-8") as fh:
+        yaml.dump(doc, fh)
+
+    print(f"froze {bank.version} on {args.date}: {digest[:12]} "
+          f"({len(bank.questions)} questions)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas-eval")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -41,6 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     p_val = sub.add_parser("validate", help="check every bank offline")
     p_val.add_argument("--banks", default=str(DEFAULT_BANKS))
     p_val.set_defaults(func=_cmd_validate)
+
+    p_freeze = sub.add_parser("freeze", help="stamp frozen_on and question_sha256")
+    p_freeze.add_argument("--bank", required=True)
+    p_freeze.add_argument("--date", required=True, help="freeze date, YYYY-MM-DD")
+    p_freeze.set_defaults(func=_cmd_freeze)
 
     args = parser.parse_args(argv)
     return args.func(args)

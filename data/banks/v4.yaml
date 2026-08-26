@@ -1,6 +1,6 @@
 version: v4
-frozen_on:
-question_sha256:
+frozen_on: '2026-08-05'
+question_sha256: 5da69eeb3130fb8ab9be81f4fba495e8fdd9438066f8f37f4329d3130da5b204
 agent: engineering_onboarding_specialist
 corpus: quick_space_ca7_daily_s3
 sourcing: Migrated from v4_answer_key.md.
@@ -34,10 +34,13 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - UIMT_SG01_CLAIMANT
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - UIMT_RSA_NONMON
+    - L2UDB020
   verification:
     status: unverified
     verified_by:
@@ -75,7 +78,10 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - ZULDNHR0
+    - L2NHD001
+    - UIMB0147
     required_any: []
     forbidden: []
     expect_citations: []
@@ -110,10 +116,14 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - additional-claim date
+    - claim basic segment
+    - DB2 claim table
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - UIMB0147
   verification:
     status: unverified
     verified_by:
@@ -153,10 +163,16 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - PENSION-AMOUNT
     required_any: []
-    forbidden: []
-    expect_citations: []
+    forbidden:
+    - '4.33333334'
+    - Option A
+    - Option B
+    - jointly funded
+    expect_citations:
+    - DXCBD87E
   verification:
     status: unverified
     verified_by:
@@ -189,10 +205,15 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - VERIS
+    - '00000110'
     required_any: []
-    forbidden: []
-    expect_citations: []
+    forbidden:
+    - runs UIQ
+    expect_citations:
+    - UIMV_SSN_RETIRED
+    - UIMB0004
   verification:
     status: unverified
     verified_by:
@@ -232,7 +253,8 @@ questions:
   checks:
     required_all: []
     required_any: []
-    forbidden: []
+    forbidden:
+    - UMOD077S
     expect_citations: []
   verification:
     status: unverified
@@ -265,10 +287,15 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - '9000'
+    - '7777'
+    - SIM 926
     required_any: []
     forbidden: []
-    expect_citations: []
+    expect_citations:
+    - DXCBDA2R
+    - UIMB0440
   verification:
     status: unverified
     verified_by:
@@ -303,9 +330,12 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: []
+    required_all:
+    - Table 112
+    - '991'
     required_any: []
-    forbidden: []
+    forbidden:
+    - munc_fips
     expect_citations: []
   verification:
     status: unverified

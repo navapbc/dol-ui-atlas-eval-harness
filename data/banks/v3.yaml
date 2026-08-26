@@ -1,6 +1,6 @@
 version: v3
-frozen_on:
-question_sha256:
+frozen_on: '2026-08-03'
+question_sha256: 414d3168fc4e1d19d04ce5b59d987693c0ecfc340b21fcd417f2d7585527c7ac
 agent: engineering_onboarding_specialist
 corpus: quick_space_ca7_daily_s3
 sourcing: Migrated from v3_answer_key.md.
