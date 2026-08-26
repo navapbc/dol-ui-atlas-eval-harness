@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -39,9 +40,17 @@ def compute_question_sha256(bank: Bank) -> str:
     Sorting by id makes the hash independent of file position: run order is
     expressed by `after`, not by where a question sits in the list. Ground
     truth and checks are excluded so they stay editable after freezing.
+
+    The pairs are serialized as JSON before hashing, rather than joined with
+    plain delimiters, because JSON escapes tabs and newlines inside strings:
+    without that, a question id containing those characters could impersonate
+    the payload's own delimiters and forge a collision between two genuinely
+    different question sets.
     """
-    payload = "\n".join(
-        f"{q.id}\t{normalize_ws(q.text)}" for q in sorted(bank.questions, key=lambda q: q.id)
+    payload = json.dumps(
+        [[q.id, normalize_ws(q.text)] for q in sorted(bank.questions, key=lambda q: q.id)],
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

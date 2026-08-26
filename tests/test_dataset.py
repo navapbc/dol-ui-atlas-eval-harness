@@ -1,3 +1,4 @@
+import datetime
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,20 @@ def test_hash_is_hex_sha256():
     assert len(h) == 64 and all(c in "0123456789abcdef" for c in h)
 
 
+def test_hash_resists_delimiter_injection_across_id_and_text_boundary():
+    # A tab/newline inside an id could, with a naive delimiter-joined payload,
+    # impersonate the id/text or record separator and forge a collision
+    # between two banks with genuinely different question sets.
+    bank_a = _bank(("A", "B"), ("C", "D"))
+    bank_b = _bank(("A\tb\nC", "D"))
+    assert compute_question_sha256(bank_a) != compute_question_sha256(bank_b)
+
+
+def test_hash_with_delimiter_bearing_id_is_deterministic():
+    bank = _bank(("A\tb\nC", "D"))
+    assert compute_question_sha256(bank) == compute_question_sha256(bank)
+
+
 def test_load_bank_reads_nested_structure():
     bank = load_bank(FIXTURES / "mini.yaml")
     assert bank.version == "v1"
@@ -72,6 +87,13 @@ def test_load_bank_reads_nested_structure():
     assert q2.type_note == "term-redirect"
     assert q2.checks.forbidden == ["ETA-227"]
     assert q2.expected_stance is Stance.REDIRECT
+    # Pin the ruamel round-trip paths: wrapper types (ScalarDate,
+    # LiteralScalarString) must not leak past pydantic into plain builtins.
+    assert bank.frozen_on == datetime.date(2026, 8, 3)
+    assert type(bank.frozen_on) is datetime.date
+    assert type(bank.sourcing) is str
+    assert "Two-question fixture" in bank.sourcing
+    assert type(bank.questions[0].ground_truth) is str
 
 
 def test_load_bank_error_names_the_question(tmp_path):
