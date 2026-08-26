@@ -95,6 +95,27 @@ def _cmd_review_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_review_import(args: argparse.Namespace) -> int:
+    from atlas_eval.review import import_review
+
+    reviewed_on = _date.fromisoformat(args.date) if args.date else _date.today()
+    report = import_review(Path(args.file), Path(args.banks), reviewed_on, args.dry_run)
+
+    if not report.ok:
+        for err in report.errors:
+            print(f"error: {err}")
+        print(f"\nnothing was written ({len(report.errors)} error(s)).")
+        return 1
+
+    for t in sorted(report.transitions, key=lambda t: t.question_id):
+        print(f"{t.question_id}: {t.old_status.value} -> {t.new_status.value} "
+              f"(by {t.reviewer})")
+    verb = "would apply" if args.dry_run else "applied"
+    print(f"\n{verb} {len(report.transitions)} verdict(s); "
+          f"{report.unchanged} row(s) unchanged.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas-eval")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -118,6 +139,13 @@ def main(argv: list[str] | None = None) -> int:
                        help="filter by verification status, e.g. unverified needs-sme")
     p_exp.add_argument("-o", "--out", required=True)
     p_exp.set_defaults(func=_cmd_review_export)
+
+    p_imp = review_sub.add_parser("import", help="write reviewer verdicts back")
+    p_imp.add_argument("file")
+    p_imp.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_imp.add_argument("--date", help="review date, YYYY-MM-DD; defaults to today")
+    p_imp.add_argument("--dry-run", action="store_true")
+    p_imp.set_defaults(func=_cmd_review_import)
 
     args = parser.parse_args(argv)
     return args.func(args)
