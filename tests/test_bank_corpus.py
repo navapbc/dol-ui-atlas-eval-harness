@@ -1,6 +1,5 @@
 """Guards over the real migrated corpus, not synthetic fixtures."""
 
-import re
 from pathlib import Path
 
 import pytest
@@ -77,22 +76,32 @@ _DISALLOWED_ABSENCE_FRAGMENTS = (
     "outside what i have",
 )
 
-# A run of two-or-more uppercase letters (an identifier like "DXCBD87E" or "WBR")
-# or any digit. Either one marks a term as domain-specific rather than generic
-# absence prose, regardless of which _DISALLOWED_ABSENCE_FRAGMENTS substring it
-# also happens to contain.
-_DOMAIN_TOKEN = re.compile(r"[A-Z]{2,}|\d")
+# Terms that genuinely need to contain a fragment from
+# _DISALLOWED_ABSENCE_FRAGMENTS because they are real, substantive content
+# checks rather than refusal/absence prose. Empty right now: no term in any
+# bank needs this exemption. Adding an entry here is a deliberate, visible
+# override of the denylist below, so every addition MUST carry a comment on
+# the line above it explaining why that specific term is substance and not
+# phrasing (e.g. why it can't be reworded to avoid the fragment).
+ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS: frozenset[str] = frozenset(
+    {
+        # (no entries yet)
+    }
+)
 
 
 def _is_generic_absence_phrase(term: str) -> bool:
-    lowered = term.lower()
-    has_fragment = any(fragment in lowered for fragment in _DISALLOWED_ABSENCE_FRAGMENTS)
-    if not has_fragment:
+    # Denylist first, no exceptions for uppercase runs or digits: a term that
+    # contains a generic absence/refusal fragment is refusal phrasing, full
+    # stop. The previous design carved out an exemption for any term with a
+    # "domain token" (a 2+ char uppercase run or a digit), which is exactly
+    # what let "not in the KB", "not documented anywhere in v1", "not found
+    # as of 2026", and "cannot find ABC123" all slip through: an incidental
+    # acronym or a stray digit is not evidence of substantive content.
+    if term in ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS:
         return False
-    # A domain-specific token (an identifier or a number) makes the term
-    # substantive even though it also contains an ordinary-English fragment,
-    # e.g. "cannot exceed 1.2" or "DXCBD87E not present".
-    return not _DOMAIN_TOKEN.search(term)
+    lowered = term.lower()
+    return any(fragment in lowered for fragment in _DISALLOWED_ABSENCE_FRAGMENTS)
 
 
 def test_required_terms_are_not_generic_refusal_phrasing():
@@ -105,19 +114,23 @@ def test_required_terms_are_not_generic_refusal_phrasing():
     # deterministic layer exists to remove. This guards every bank, including the
     # not-yet-populated v4-v6, so this class of defect can't return.
     #
-    # The rule is sharper than a bare fragment scan: a term is only flagged when it
-    # contains a generic absence fragment AND has no domain-specific token (no
-    # uppercase identifier of two-or-more characters, no digit). That keeps a future
-    # substantive term such as "cannot exceed 1.2" or "DXCBD87E not present" legal
-    # while still catching "not documented" or "no trace".
+    # The rule is a denylist plus an explicit allowlist, not a fragment-scan with a
+    # domain-token carve-out: any term containing a fragment is rejected unless it
+    # is named in ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS. That inverts the old
+    # burden — bypassing the guard now requires a deliberate, reviewable allowlist
+    # entry instead of an accidental uppercase acronym or a stray digit.
     for bank in load_all_banks(BANKS):
         for q in bank.questions:
             for name in ("required_all", "required_any"):
                 for term in getattr(q.checks, name):
                     assert not _is_generic_absence_phrase(term), (
-                        f"{q.id}: {name} term {term!r} is a generic refusal/"
-                        "absence phrase with no domain-specific token; refusal is "
-                        "a stance judgment, not a deterministic content check"
+                        f"{q.id}: {name} term {term!r} is a generic refusal/absence "
+                        "phrase; refusal is a stance judgment, not a deterministic "
+                        "content check. Either reword the term as substance (an "
+                        "identifier, a value, a rule) or, if it is genuinely a "
+                        "content check that can't avoid the fragment, add it to "
+                        "ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS with a comment "
+                        "justifying why."
                     )
 
 
@@ -128,14 +141,44 @@ def test_generic_absence_phrase_is_flagged():
     assert _is_generic_absence_phrase("zero hits for this term")
 
 
-def test_substantive_term_with_ordinary_english_fragment_is_allowed():
-    # These contain a fragment from the disallowed list ("cannot", "unable",
-    # "no evidence", "not present") but are legitimate domain content because
-    # they carry a number or an uppercase identifier.
-    assert not _is_generic_absence_phrase("cannot exceed 1.2")
-    assert not _is_generic_absence_phrase("DXCBD87E not present")
-    assert not _is_generic_absence_phrase("unable to exceed WBR")
-    assert not _is_generic_absence_phrase("no evidence of PWBR above 5")
+def test_bypass_strings_are_rejected_without_domain_token_exemption():
+    # These four defeated the old design: each contains a disallowed fragment
+    # but also an uppercase run or a digit, which used to be treated as proof
+    # of substance. The denylist-plus-allowlist design has no such carve-out.
+    assert _is_generic_absence_phrase("not in the KB")
+    assert _is_generic_absence_phrase("not documented anywhere in v1")
+    assert _is_generic_absence_phrase("not found as of 2026")
+    assert _is_generic_absence_phrase("cannot find ABC123")
+
+
+def test_substantive_term_with_ordinary_english_fragment_is_rejected_by_default():
+    # "cannot exceed 1.2" carries a real value and a disallowed fragment
+    # ("cannot"). Under the old domain-token exemption this passed just
+    # because it has a digit. Under the denylist-plus-allowlist design it is
+    # rejected by default: the only way past the guard is the explicit
+    # allowlist, not an incidental digit.
+    assert _is_generic_absence_phrase("cannot exceed 1.2")
+
+
+def test_allowlist_mechanism_exempts_a_listed_term():
+    term = "cannot exceed 1.2"
+    assert _is_generic_absence_phrase(term)
+    allowed = ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS | {term}
+    lowered = term.lower()
+    still_has_fragment = any(f in lowered for f in _DISALLOWED_ABSENCE_FRAGMENTS)
+    assert still_has_fragment  # the fragment is still there
+    assert term in allowed  # but the allowlist now exempts it
+    # Exercise the exemption path itself, not just set membership: a term in
+    # the allowlist must make _is_generic_absence_phrase return False.
+    import sys
+
+    module = sys.modules[__name__]
+    original = module.ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS
+    try:
+        module.ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS = allowed
+        assert not _is_generic_absence_phrase(term)
+    finally:
+        module.ALLOWED_TERMS_CONTAINING_ABSENCE_FRAGMENTS = original
 
 
 def test_run_order_resolves_for_every_bank():

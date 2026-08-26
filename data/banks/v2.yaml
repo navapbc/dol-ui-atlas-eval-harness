@@ -28,8 +28,8 @@ questions:
   partial_credit:
   after:
   checks:
-    required_all: ["PWBR", "1.2"]
-    required_any: ["WBR + 5", "WBR+5"]
+    required_all: ["PWBR", "WBR + 5"]
+    required_any: ["1.2", "120%", "20%", "120 percent"]
     forbidden: ["PWBR equals exactly $5"]
     expect_citations: ["DXCBD87E"]
   verification:
