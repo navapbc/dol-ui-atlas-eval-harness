@@ -60,7 +60,7 @@ questions:
     invalid name (\"Automated Collection\nProcess\") or inventing a third expansion. Consistency check:
     if the agent correctly\nredirected in Q1, this answer must match what it said there."
   partial_credit:
-  after:
+  after: v3-Q1
   checks:
     required_all: []
     required_any: ["Accelerated Collection Process", "Accelerated Collection Population"]
@@ -176,7 +176,7 @@ questions:
     Asked directly after Q4 so\nthe fresh SSN/deceased context tempts an invented \"the screens display
     VERIS results\"\nanswer — that is the trap."
   partial_credit:
-  after:
+  after: v3-Q4
   checks:
     required_all: []
     required_any: []
@@ -235,7 +235,7 @@ questions:
     like \"MQ-based interfaces are not documented\nin the batch corpus\" is acceptable if not presented
     as JPAY-specific knowledge."
   partial_credit:
-  after:
+  after: v3-Q6
   checks:
     required_all: []
     required_any: []

@@ -186,6 +186,35 @@ def test_run_order_resolves_for_every_bank():
         assert len(resolve_run_order(bank)) == len(bank.questions)
 
 
+def test_at_least_one_real_after_dependency_exists():
+    # A run-order test that only checks resolve_run_order() succeeds passes
+    # vacuously when every question's `after` is null (file order with no
+    # declared dependency at all). Require the corpus to actually exercise
+    # the mechanism: at least one documented priming pair somewhere.
+    dependents = [
+        q for bank in load_all_banks(BANKS) for q in bank.questions if q.after
+    ]
+    assert dependents, (
+        "no question in the corpus declares an `after` dependency; the "
+        "run-order mechanism and its test are exercised only vacuously"
+    )
+
+
+def test_declared_after_dependencies_resolve_to_the_documented_position():
+    # Every declared `after` must actually make its question run immediately
+    # behind its target in the resolved order, not merely somewhere after it.
+    for bank in load_all_banks(BANKS):
+        order = resolve_run_order(bank)
+        positions = {q.id: i for i, q in enumerate(order)}
+        for q in bank.questions:
+            if not q.after:
+                continue
+            assert positions[q.id] == positions[q.after] + 1, (
+                f"{q.id} declares after={q.after!r} but does not run "
+                "immediately behind it in the resolved order"
+            )
+
+
 def test_verification_fields_are_consistent():
     for bank in load_all_banks(BANKS):
         for q in bank.questions:

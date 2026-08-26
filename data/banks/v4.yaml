@@ -246,7 +246,7 @@ questions:
     this message\").\nAttributing the message to an in-KB program or listing response-code meanings =
     0\ncorrectness."
   partial_credit:
-  after:
+  after: v4-Q5
   checks:
     required_all: []
     required_any: []
