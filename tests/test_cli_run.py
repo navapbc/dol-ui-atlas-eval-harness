@@ -119,6 +119,72 @@ def test_print_sheet_emits_the_run_sheet_and_exits_zero(tmp_path, capsys):
     assert "same conversation" in out.lower()
 
 
+class _FakePersistentContext:
+    """Stands in for a Playwright BrowserContext: tracks whether it was closed."""
+
+    def __init__(self, page) -> None:
+        self.pages = [page]
+        self.closed = False
+
+    def new_page(self):
+        raise AssertionError("pages was pre-seeded; new_page should not be called")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeFailingPage:
+    """A page whose .goto raises, simulating a bad URL or navigation timeout."""
+
+    def goto(self, url):
+        raise RuntimeError("navigation boom")
+
+
+class _FakeChromium:
+    def __init__(self, ctx) -> None:
+        self._ctx = ctx
+
+    def launch_persistent_context(self, *args, **kwargs):
+        return self._ctx
+
+
+class _FakePlaywright:
+    def __init__(self, ctx) -> None:
+        self.chromium = _FakeChromium(ctx)
+
+
+class _FakeSyncPlaywrightCM:
+    def __init__(self, ctx) -> None:
+        self._ctx = ctx
+
+    def __enter__(self):
+        return _FakePlaywright(self._ctx)
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_context_is_closed_when_goto_fails_before_the_run_starts(tmp_path, monkeypatch):
+    """A bad URL or nav error between opening the context and starting the run
+
+    must not leak a headed, signed-in browser: ctx.close() must still run.
+    """
+    ctx = _FakePersistentContext(_FakeFailingPage())
+    monkeypatch.setattr(
+        "playwright.sync_api.sync_playwright", lambda: _FakeSyncPlaywrightCM(ctx)
+    )
+
+    profile = tmp_path / "profile"
+    profile.mkdir()
+
+    with pytest.raises(RuntimeError, match="navigation boom"):
+        main(["run", "--bank", str(_bank(tmp_path)), "--transport", "playwright",
+              "--url", "https://example.com/agent", "--profile-dir", str(profile),
+              "--runs", str(tmp_path / "runs"), "--no-snapshot"])
+
+    assert ctx.closed, "the context must be closed even when goto raises before the run"
+
+
 def test_playwright_transport_requires_a_url(tmp_path, capsys):
     code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "playwright",
                  "--runs", str(tmp_path / "runs"), "--no-snapshot"])
@@ -137,7 +203,13 @@ def test_run_help_lists_both_transports(capsys):
     with pytest.raises(SystemExit):
         main(["run", "--help"])
     out = capsys.readouterr().out
-    assert "paste" in out and "playwright" in out
+    # argparse's own "{paste,playwright}" choices listing would satisfy a bare
+    # substring check regardless of whether the descriptive help text is
+    # right, so assert on wording from the actual --transport and
+    # --no-snapshot help strings instead.
+    assert "you drive Quick and paste the transcript" in out
+    assert "drive the UI (needs a signed-in profile)" in out
+    assert "score cannot be interpreted later" in out
 
 
 def test_print_sheet_needs_only_bank_no_aws_flags(tmp_path, capsys):

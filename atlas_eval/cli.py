@@ -265,13 +265,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from atlas_eval.adapters.quick_playwright import QuickPlaywrightBackend
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(str(profile), headless=False)
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto(args.url)
-        backend = QuickPlaywrightBackend(
-            agent=args.agent_name or "", url=args.url,
-            snapshot_data=snapshot_data, profile_dir=profile, page=page,
-        )
+        # Everything from here on can raise (a bad URL, a navigation timeout,
+        # a Playwright error, an OrchestrationError from the run itself), and
+        # all of it must still close the headed, signed-in context. Only the
+        # context's own construction sits outside this try.
         try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            page.goto(args.url)
+            backend = QuickPlaywrightBackend(
+                agent=args.agent_name or "", url=args.url,
+                snapshot_data=snapshot_data, profile_dir=profile, page=page,
+            )
             run_dir = run_bank(bank_path, backend, Path(args.runs))
         except OrchestrationError as err:
             print(f"error: {err}")
@@ -372,7 +376,9 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--agent-id")
     p_run.add_argument("--agent-name")
     p_run.add_argument("--no-snapshot", action="store_true",
-                       help="skip the control-plane snapshot (offline testing)")
+                       help="skip the control-plane snapshot, for offline testing only: "
+                            "the run's agent and space configuration will not be "
+                            "recorded, so its score cannot be interpreted later")
     p_run.set_defaults(func=_cmd_run)
 
     args = parser.parse_args(argv)

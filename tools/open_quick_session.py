@@ -15,6 +15,31 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+from atlas_eval.adapters import quick_dom as qd
+
+READY_MESSAGE = "Session stored. Runs can now use --transport playwright."
+
+
+def check_session_ready(page) -> tuple[bool, str]:
+    """Whether the page a human just signed in on looks usable for a run.
+
+    Takes a page-like object (anything with `.url` and `.locator(selector)`)
+    so this can be exercised without a browser. Only inspects the page the
+    human already navigated by hand: it never types credentials and never
+    automates a login form.
+    """
+    if qd.is_auth_redirect(page.url):
+        return False, (
+            f"still looks like a login page ({page.url[:120]}); sign in fully, "
+            "then re-run this script before using --transport playwright."
+        )
+    if page.locator(qd.SEL_INPUT).count() == 0:
+        return False, (
+            "chat input not found on the final page; open the agent chat (and "
+            "sign in if you were bounced back to it), then re-run this script."
+        )
+    return True, READY_MESSAGE
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -33,8 +58,13 @@ def main() -> int:
         print("Sign in, open the agent, then press Enter here to save and close.")
         input("> ")
         print(f"  final URL: {page.url}")
+        ready, message = check_session_ready(page)
         ctx.close()
-    print("Session stored. Runs can now use --transport playwright.")
+
+    if not ready:
+        print(f"error: {message}")
+        return 1
+    print(message)
     return 0
 
 
