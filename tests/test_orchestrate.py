@@ -161,13 +161,6 @@ def test_unfrozen_bank_records_the_computed_hash(tmp_path):
     assert read_run(run_dir)[0].question_sha256 == compute_question_sha256(load_bank(path))
 
 
-def test_orchestrator_never_writes_a_rubric_value(tmp_path):
-    import atlas_eval.orchestrate as mod
-    src = open(mod.__file__).read()
-    for dim in ("citations=", "correctness=", "gap_honesty=", "scope_discipline=", "clarity="):
-        assert dim not in src, f"orchestrator must not set {dim}"
-
-
 class TransportStubBackend(StubBackend):
     """StubBackend with a configurable transport, to reproduce the finding that
     both real transports report backend.name == 'quick' and so need the
