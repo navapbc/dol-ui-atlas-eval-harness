@@ -139,3 +139,11 @@ aborts and marks the run `incomplete`.
 
 An incomplete run is still written to `data/runs/` for diagnosis, exits non-zero,
 and is excluded from `atlas-eval report`.
+
+After a run, regenerate `data/scores.csv` from `data/runs/` and commit the
+result:
+
+    atlas-eval rollup
+
+CI runs `atlas-eval rollup --check` and fails if `data/scores.csv` is out of
+date with `data/runs/`, so a real run isn't finished until this has been run.

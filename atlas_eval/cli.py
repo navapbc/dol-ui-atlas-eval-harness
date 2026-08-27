@@ -209,6 +209,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"error: no such bank file: {bank_path}")
         return 2
 
+    if args.print_sheet and args.transport != "paste":
+        # --print-sheet only means anything for the paste transport (no AWS,
+        # no URL, no browser needed): under playwright it was silently
+        # ignored rather than flagged as the operator's mistake.
+        print(f"error: --print-sheet is only meaningful with --transport paste, "
+              f"not --transport {args.transport}")
+        return 2
+
     if args.transport == "paste" and args.print_sheet:
         from atlas_eval.adapters.quick_paste import render_prompt_sheet
         from atlas_eval.dataset import load_bank, resolve_run_order
@@ -252,7 +260,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.transport == "paste":
         backend = QuickPasteBackend(agent=args.agent_name or "",
                                     snapshot_data=snapshot_data,
-                                    transcript_text=transcript_path.read_text())
+                                    transcript_text=transcript_path.read_text(encoding="utf-8"))
         try:
             run_dir = run_bank(bank_path, backend, Path(args.runs))
         except OrchestrationError as err:

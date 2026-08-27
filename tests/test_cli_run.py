@@ -304,6 +304,39 @@ def test_missing_url_exits_two_without_snapshot_flags(tmp_path, capsys):
     assert "account-id" not in out.lower()
 
 
+def test_cli_reads_the_pasted_transcript_with_an_explicit_utf8_encoding():
+    # Everything else in the project opens/reads/writes text with an explicit
+    # encoding="utf-8" (see atlas_eval/runs.py); cli.py's transcript read was
+    # the one holdout, relying on the platform's default encoding instead.
+    import ast
+
+    tree = ast.parse(Path("atlas_eval/cli.py").read_text(encoding="utf-8"))
+    read_text_calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "read_text"
+    ]
+    assert read_text_calls, "expected at least one .read_text() call in cli.py"
+    for call in read_text_calls:
+        assert any(kw.arg == "encoding" for kw in call.keywords), (
+            "cli.py calls .read_text() without an explicit encoding"
+        )
+
+
+def test_print_sheet_under_playwright_transport_is_rejected_as_a_bad_invocation(
+    tmp_path, capsys,
+):
+    # --print-sheet only means anything for the paste transport (it needs no
+    # AWS, no URL, no browser); under playwright it was silently ignored
+    # instead of being flagged as the operator's mistake.
+    code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "playwright",
+                 "--print-sheet", "--url", "https://example.com/agent",
+                 "--runs", str(tmp_path / "runs"), "--no-snapshot"])
+    assert code == 2
+    out = capsys.readouterr().out
+    assert "--print-sheet" in out
+    assert "playwright" in out.lower()
+
+
 def test_pass_count_matches_scores_csv_deterministic_pass_column(tmp_path, capsys):
     """`run`'s printed pass count must agree with report's own deterministic_pass tally.
 

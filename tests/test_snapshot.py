@@ -92,6 +92,16 @@ def test_bad_json_surfaces_as_snapshot_error():
         capture("123456789012", agent_id="x", runner=lambda args: "not json")
 
 
+def test_empty_account_id_is_refused_rather_than_corrupting_the_scrub():
+    # str.replace("", "<ACCOUNT-ID>") inserts the placeholder between every
+    # character of every string in the snapshot -- an empty account_id must
+    # be refused up front, not silently produce a mangled snapshot.
+    with pytest.raises(SnapshotError):
+        capture("", agent_id="093ac4e3-0712-481e-af95-9ddc5e4fc734",
+                runner=_runner([], {"list-agents": AGENTS, "describe-agent": AGENT,
+                                    "list-spaces": SPACES}))
+
+
 # ---------------------------------------------------------------------------
 # Finding 1, fix pass 2: denylist scrubbing caught the account id and
 # email-shaped strings but let a username inside an ARN, a CreatedBy, an

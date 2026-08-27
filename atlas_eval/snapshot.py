@@ -206,6 +206,11 @@ def capture(
     Pass agent_id when known. Otherwise pass agent_name and it is resolved from
     list-agents, so a run is never recorded against a guessed agent.
     """
+    if not account_id:
+        # str.replace("", "<ACCOUNT-ID>") (in _scrub) inserts the placeholder
+        # between every character of every string in the snapshot -- refuse
+        # up front rather than silently produce a mangled snapshot.
+        raise SnapshotError("account_id must not be empty")
     agents = _call(runner, ["quicksight", "list-agents", "--aws-account-id", account_id])
 
     if agent_id is None:
