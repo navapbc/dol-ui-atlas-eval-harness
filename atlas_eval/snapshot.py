@@ -92,7 +92,7 @@ def _scrub(value, account_id: str):
     """Recursively redact account ids and email addresses from a payload.
 
     Redacts rather than deletes: an ARN like
-    arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:agent/093ac4e3-... keeps its
+    arn:aws:quicksight:us-east-1:000000000000:agent/093ac4e3-... keeps its
     shape and resource path (arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:agent/
     093ac4e3-...) so the snapshot stays useful for debugging while the
     identifying number is gone.

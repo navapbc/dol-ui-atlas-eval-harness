@@ -102,7 +102,7 @@ def test_bad_json_surfaces_as_snapshot_error():
 # survive by accident.
 # ---------------------------------------------------------------------------
 
-REAL_ACCOUNT_ID = "<ACCOUNT-ID>"
+REAL_ACCOUNT_ID = "000000000000"  # obviously-fake account id, not the real one
 
 # Mirrors the four leaks the reviewer demonstrated getting past the old
 # scrubber: a username inside an IAM ARN, a plain CreatedBy, a tag value,
@@ -110,8 +110,8 @@ REAL_ACCOUNT_ID = "<ACCOUNT-ID>"
 LEAKY_AGENT = {"Agent": {
     "AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
     "Name": "Engineering Onboarding Specialist",
-    "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/michael.angeli",
-    "CreatedBy": "michael.angeli",
+    "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/jsmith",
+    "CreatedBy": "jsmith",
     "Owner": {"Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:role/created-by-jdoe-admin-role"},
     "Tags": [{"Key": "Owner", "Value": "jdoe"}],
     "CustomPromptInterface": {
@@ -123,12 +123,12 @@ LEAKY_AGENT = {"Agent": {
 LEAKY_AGENTS = {"AgentSummaryList": [
     {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
      "Name": "Engineering Onboarding Specialist",
-     "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/michael.angeli"},
+     "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/jsmith"},
 ]}
 LEAKY_SPACES = {"SpaceSummaryList": [
     {"SpaceId": "s1", "Name": "quick_space_ca7_daily_s3",
-     "createdBy": "AWSReservedSSO_AWSAdministratorAccess_x/<EMAIL>",
-     "createdByArn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:user/default/michael.angeli",
+     "createdBy": "AWSReservedSSO_AWSAdministratorAccess_x/jsmith@example.invalid",
+     "createdByArn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:user/default/jsmith",
      "Tags": [{"Key": "Owner", "Value": "jdoe"}],
      "resourcesCount": 1, "consumedSourceDocCount": 28},
 ]}
@@ -141,10 +141,10 @@ def test_allowlist_projection_drops_identity_leaks_the_old_scrubber_missed():
     dumped = json.dumps(snap)
 
     # The four leaks the reviewer demonstrated.
-    assert "michael.angeli" not in dumped
+    assert "jsmith" not in dumped
     assert "jdoe" not in dumped
     assert "created-by-jdoe-admin-role" not in dumped
-    assert f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/michael.angeli" not in dumped
+    assert f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/jsmith" not in dumped
 
     # The keys that carried them are gone entirely, not just redacted.
     assert "Arn" not in snap["agent"]
@@ -195,7 +195,7 @@ def test_instructions_stays_scrubbed_despite_being_allowlisted():
         **LEAKY_AGENT["Agent"],
         "CustomPromptInterface": {
             "CustomInstructions": (
-                f"Contact ops@dol.nj.gov or account {REAL_ACCOUNT_ID} for access."
+                f"Contact ops@example.invalid or account {REAL_ACCOUNT_ID} for access."
             ),
         },
     }}
@@ -268,3 +268,32 @@ def test_default_aws_runner_raises_snapshot_error_not_index_error_when_too_short
         with pytest.raises(SnapshotError):
             default_aws_runner(["quicksight"])
         run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# This is the third instance in this project of the exact leak class the
+# allowlist projection above exists to prevent, this time in the test file
+# that asserts the leak cannot happen: a real AWS account id and real
+# operator email addresses were committed as fixture literals. Nothing in
+# this test module needs the real values to exercise the scrubbing/allowlist
+# behaviour -- obvious fakes exercise the same code paths.
+# ---------------------------------------------------------------------------
+
+def test_no_real_account_id_or_operator_email_committed_in_source():
+    import base64
+    import pathlib
+
+    # The real values themselves must never appear as a contiguous literal in
+    # this repo, including in this very check -- so the needles are decoded
+    # at runtime from base64 rather than spelled out, and it is *these
+    # decoded strings* that must not appear in the target files' source text.
+    encoded_needles = (
+        "Mjk4NjMyMzE3MjI4",  # the real AWS account id
+        "bWljaGFlbC5hbmdlbGlAZG9sLm5qLmdvdg==",  # the real named operator email
+        "b3BzQGRvbC5uai5nb3Y=",  # the real shared ops email
+    )
+    real_needles = [base64.b64decode(n).decode() for n in encoded_needles]
+    for rel_path in ("atlas_eval/snapshot.py", "tests/test_snapshot.py"):
+        text = (pathlib.Path(__file__).parent.parent / rel_path).read_text()
+        for needle in real_needles:
+            assert needle not in text, f"{rel_path} still contains a real committed value"
