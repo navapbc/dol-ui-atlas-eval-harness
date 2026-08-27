@@ -133,6 +133,108 @@ def _wired_page(n_questions):
     return page
 
 
+def _wired_page_with_baseline(baseline: int):
+    """A page that starts a run with `baseline` prior answers already on the
+    thread, then completes one NEW answer per submitted question.
+
+    Models a resumed conversation over a persistent profile: the footer count
+    and turn list are non-zero before the first question in this run is ever
+    asked.
+    """
+    from atlas_eval.adapters import quick_dom as qd
+    page = FakePage()
+    page.counts[qd.SEL_INPUT] = 1
+    page.counts[qd.SEL_AI_FOOTER] = baseline
+    page.counts[qd.SEL_THREAD] = 1
+    page.attrs[(qd.SEL_THREAD, "data-conversation-id")] = "conv-1"
+    prior = [f"prior answer {k}" for k in range(1, baseline + 1)]
+    page.lists[qd.SEL_AI_TURN] = list(prior)
+    page.lists[qd.SEL_STATUS] = ["New message from Engineering Onboarding Specialist"]
+    page.lists[qd.SEL_USER_TURN] = []
+
+    def on_submit():
+        total_footers = page.counts[qd.SEL_AI_FOOTER] + 1
+        page.counts[qd.SEL_AI_FOOTER] = total_footers
+        new_count = total_footers - baseline
+        page.lists[qd.SEL_AI_TURN] = prior + [f"new answer {k}" for k in range(1, new_count + 1)]
+    page.on_submit = on_submit
+    return page
+
+
+def test_ask_returns_new_answers_not_stale_ones_when_the_thread_has_prior_turns(monkeypatch):
+    """The Critical: a resumed thread with prior answers must not satisfy the
+    wait instantly and must not pair questions with pre-existing answers.
+
+    `on_submit` is a no-op here (the answer is not ready the instant Enter is
+    pressed), so the only way `ask()` can finish is by actually polling
+    (calling `sleep`) until the baselined footer count is reached. If the
+    unfixed code ran, `wait_for_answer` would already see the 2 prior footers
+    as satisfying `expected_count=1`/`2` and return without ever sleeping, and
+    the responses would come back as the prior answers rather than the new
+    ones.
+    """
+    import atlas_eval.adapters.quick_playwright as qp
+    from atlas_eval.adapters import quick_dom as qd
+
+    page = _wired_page_with_baseline(baseline=2)
+    page.on_submit = lambda: None  # nothing completes until a poll tick
+
+    sleep_calls = []
+
+    def fake_sleep(ms):
+        sleep_calls.append(ms)
+        total_footers = page.counts[qd.SEL_AI_FOOTER] + 1
+        page.counts[qd.SEL_AI_FOOTER] = total_footers
+        new_count = total_footers - 2
+        page.lists[qd.SEL_AI_TURN] = (
+            ["prior answer 1", "prior answer 2"]
+            + [f"new answer {k}" for k in range(1, new_count + 1)]
+        )
+
+    monkeypatch.setattr(qp.time, "sleep", fake_sleep)
+
+    backend = qp.QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+
+    assert result.complete is True, result.failure
+    assert len(sleep_calls) >= 2, (
+        "ask() must actually wait for each new answer rather than being "
+        "satisfied instantly by pre-existing footers"
+    )
+    assert [r.answer for r in result.responses] == ["new answer 1", "new answer 2"], (
+        "must return the NEW answers, never the 2 prior ones already on the thread"
+    )
+
+
+def test_ask_with_a_single_prior_answer_returns_the_new_one():
+    page = _wired_page_with_baseline(baseline=1)
+    backend = QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1")])
+    assert result.complete is True, result.failure
+    assert result.responses[0].answer == "new answer 1"
+
+
+def test_ask_aborts_when_turns_and_footers_fall_out_of_lockstep():
+    from atlas_eval.adapters import quick_dom as qd
+    page = _wired_page(2)
+    original = page.on_submit
+
+    def spurious():
+        original()
+        # An extra turn renders (e.g. an error bubble or a stray quick-starter
+        # chip) without a matching footer.
+        page.lists[qd.SEL_AI_TURN] = page.lists[qd.SEL_AI_TURN] + ["stray turn"]
+    page.on_submit = spurious
+
+    backend = QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1")])
+
+    assert result.complete is False
+    assert "PARSE_FAILED" in result.failure
+    assert "2 new agent turns" in result.failure
+    assert "1 new completed-answer footers" in result.failure
+
+
 def test_ask_walks_the_bank_in_order_and_pairs_answers():
     page = _wired_page(2)
     backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
@@ -166,7 +268,7 @@ def test_ask_marks_incomplete_on_a_transport_error_and_keeps_prior_answers():
     assert [r.question_id for r in result.responses] == ["v3-Q1"]
 
 
-def test_ask_aborts_if_the_conversation_changes_midway():
+def test_ask_aborts_if_the_conversation_changes_after_the_first_question():
     from atlas_eval.adapters import quick_dom as qd
     page = _wired_page(2)
     original = page.on_submit

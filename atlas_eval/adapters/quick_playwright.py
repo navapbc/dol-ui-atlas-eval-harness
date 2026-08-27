@@ -49,11 +49,17 @@ def wait_for_answer(
     poll_ms: int = POLL_INTERVAL_MS,
     sleep=None,
 ) -> None:
-    """Block until `expected_count` answers have finished rendering.
+    """Block until `expected_count` completed-answer footers exist on the page.
 
     The footer element renders once per completed answer, which is a positive
     signal: it cannot confuse "finished" with "never started", which is exactly
     what waiting for a stop control to vanish would do.
+
+    `expected_count` is a raw footer count, not a "how many have I asked"
+    count. Callers resuming a thread with prior turns already on the page
+    must add their own baseline footer count before calling this, or the
+    wait is satisfied instantly by footers that predate this run. See
+    `QuickPlaywrightBackend.ask` for that baselining.
     """
     rest = sleep if sleep is not None else (lambda ms: time.sleep(ms / 1000))
     waited = 0
@@ -118,11 +124,22 @@ class QuickPlaywrightBackend:
         responses: list[Response] = []
         conversation = qd.conversation_id(page)
 
+        # The persistent profile means the landing URL can open on a thread
+        # that already holds prior turns (the recon note records the default
+        # agent already active). If we asked for raw footer/turn counts, the
+        # very first wait would be satisfied instantly by pre-existing footers,
+        # and we'd pair the new question with someone else's old answer while
+        # still reporting complete=True. So every count below is taken
+        # relative to a baseline captured here, before the first question is
+        # asked. Do not "simplify" this back to raw indices.
+        baseline_footers = qd.completed_answer_count(page)
+        baseline_turns = len(qd.answer_texts(page))
+
         try:
             _guard_auth(page)
             for index, question in enumerate(questions, 1):
                 submit_question(page, question.text)
-                wait_for_answer(page, expected_count=index)
+                wait_for_answer(page, expected_count=baseline_footers + index)
 
                 current = qd.conversation_id(page)
                 if conversation is None:
@@ -136,15 +153,26 @@ class QuickPlaywrightBackend:
                     )
 
                 answers = qd.answer_texts(page)
-                if len(answers) < index:
+                new_turns = len(answers) - baseline_turns
+                new_footers = qd.completed_answer_count(page) - baseline_footers
+                if new_turns < index:
                     raise TransportError(
                         "PARSE_FAILED",
-                        f"{index} answers completed but only {len(answers)} agent turns "
-                        f"are readable for {question.id}",
+                        f"{index} new answers completed but only {new_turns} new agent "
+                        f"turns are readable for {question.id}",
+                    )
+                if new_turns != new_footers:
+                    raise TransportError(
+                        "PARSE_FAILED",
+                        f"turn/footer mismatch for {question.id}: {new_turns} new agent "
+                        f"turns but {new_footers} new completed-answer footers since the "
+                        "baseline; the two DOM queries have fallen out of lockstep "
+                        "(a stray turn or footer, such as an error bubble or a quick-"
+                        "starter chip, would shift every later pairing without this check)",
                     )
                 responses.append(Response(
                     question_id=question.id,
-                    answer=answers[index - 1],
+                    answer=answers[baseline_turns + index - 1],
                     asked_at=datetime.now(),
                     citations=qd.citation_labels(page),
                 ))
