@@ -194,10 +194,47 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from atlas_eval.adapters.quick_paste import QuickPasteBackend
     from atlas_eval.orchestrate import OrchestrationError, run_bank
 
+    # Validation order, cheapest and most-local first: a user fixing a typo'd
+    # flag should never be told to go authenticate with AWS first.
+    #   1. does the bank file exist (needed by every path, including
+    #      --print-sheet, which reads only this)
+    #   2. --print-sheet: satisfied by the bank alone, so handle and exit
+    #      before anything else is asked for
+    #   3. the other transport-specific, purely-local requirements
+    #      (--transcript/its file, --url/its browser profile)
+    #   4. only once all of the above hold: the control-plane snapshot, the
+    #      one step that actually talks to AWS
     bank_path = Path(args.bank)
     if not bank_path.is_file():
         print(f"error: no such bank file: {bank_path}")
         return 2
+
+    if args.transport == "paste" and args.print_sheet:
+        from atlas_eval.adapters.quick_paste import render_prompt_sheet
+        from atlas_eval.dataset import load_bank, resolve_run_order
+        print(render_prompt_sheet(resolve_run_order(load_bank(bank_path))))
+        return 0
+
+    transcript_path: Path | None = None
+    profile: Path | None = None
+    if args.transport == "paste":
+        if not args.transcript:
+            print("error: --transcript is required for the paste transport "
+                  "(or pass --print-sheet to generate the sheet to fill in)")
+            return 2
+        transcript_path = Path(args.transcript)
+        if not transcript_path.is_file():
+            print(f"error: no such transcript: {transcript_path}")
+            return 2
+    else:
+        if not args.url:
+            print("error: --url is required for the playwright transport")
+            return 2
+        profile = Path(args.profile_dir)
+        if not profile.exists():
+            print(f"error: no browser profile at {profile}. Run "
+                  f"tools/open_quick_session.py first and sign in once.")
+            return 2
 
     snapshot_data: dict = {}
     if not args.no_snapshot:
@@ -213,68 +250,56 @@ def _cmd_run(args: argparse.Namespace) -> int:
             return 2
 
     if args.transport == "paste":
-        if args.print_sheet:
-            from atlas_eval.adapters.quick_paste import render_prompt_sheet
-            from atlas_eval.dataset import load_bank, resolve_run_order
-            print(render_prompt_sheet(resolve_run_order(load_bank(bank_path))))
-            return 0
-        if not args.transcript:
-            print("error: --transcript is required for the paste transport "
-                  "(or pass --print-sheet to generate the sheet to fill in)")
-            return 2
-        transcript_path = Path(args.transcript)
-        if not transcript_path.is_file():
-            print(f"error: no such transcript: {transcript_path}")
-            return 2
         backend = QuickPasteBackend(agent=args.agent_name or "",
                                     snapshot_data=snapshot_data,
                                     transcript_text=transcript_path.read_text())
-    else:
-        if not args.url:
-            print("error: --url is required for the playwright transport")
+        try:
+            run_dir = run_bank(bank_path, backend, Path(args.runs))
+        except OrchestrationError as err:
+            print(f"error: {err}")
             return 2
-        from playwright.sync_api import sync_playwright
+        return _report_run(run_dir)
 
-        from atlas_eval.adapters.quick_playwright import QuickPlaywrightBackend
-        profile = Path(args.profile_dir)
-        if not profile.exists():
-            print(f"error: no browser profile at {profile}. Run "
-                  f"tools/open_quick_session.py first and sign in once.")
+    from playwright.sync_api import sync_playwright
+
+    from atlas_eval.adapters.quick_playwright import QuickPlaywrightBackend
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(str(profile), headless=False)
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page.goto(args.url)
+        backend = QuickPlaywrightBackend(
+            agent=args.agent_name or "", url=args.url,
+            snapshot_data=snapshot_data, profile_dir=profile, page=page,
+        )
+        try:
+            run_dir = run_bank(bank_path, backend, Path(args.runs))
+        except OrchestrationError as err:
+            print(f"error: {err}")
             return 2
-        with sync_playwright() as p:
-            ctx = p.chromium.launch_persistent_context(str(profile), headless=False)
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            page.goto(args.url)
-            backend = QuickPlaywrightBackend(
-                agent=args.agent_name or "", url=args.url,
-                snapshot_data=snapshot_data, profile_dir=profile, page=page,
-            )
-            try:
-                run_dir = run_bank(bank_path, backend, Path(args.runs))
-            except OrchestrationError as err:
-                print(f"error: {err}")
-                return 2
-            finally:
-                ctx.close()
-            return _report_run(run_dir)
-
-    try:
-        run_dir = run_bank(bank_path, backend, Path(args.runs))
-    except OrchestrationError as err:
-        print(f"error: {err}")
-        return 2
-    return _report_run(run_dir)
+        finally:
+            ctx.close()
+        return _report_run(run_dir)
 
 
 def _report_run(run_dir: Path) -> int:
+    from atlas_eval.report import read_deterministic_pass
     from atlas_eval.runs import read_run
 
     meta, responses, rows = read_run(run_dir)
-    passed = sum(1 for line in (run_dir / "scores.csv").read_text().splitlines()[1:]
-                 if ",True," in line)
+    # Reuse report.py's own scores.csv parsing rather than re-deriving a count
+    # here: a second hand-rolled tally is exactly how this drifted from what
+    # `atlas-eval report` prints in the first place (a ",True," substring
+    # search used to match required_all_pass/forbidden_pass/etc. too, not
+    # just deterministic_pass). `run` stays self-contained -- it does not
+    # call build_report/format_report, since those deliberately refuse to
+    # summarise an incomplete run, and `run` must still print something
+    # useful for one.
+    deterministic = read_deterministic_pass(run_dir)
+    passed = sum(1 for v in deterministic.values() if v is True)
+    scored = sum(1 for v in deterministic.values() if v is not None)
     print(f"{meta.run_id}: {meta.status.value}")
     print(f"  answers: {len(responses)}   scored rows: {len(rows)}   "
-          f"deterministic passes: {passed}")
+          f"deterministic_pass: {passed}/{scored}")
     print(f"  written to {run_dir}")
     if meta.status.value != "complete":
         print("  this run is incomplete and is excluded from bank-level results")

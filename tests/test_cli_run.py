@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,41 @@ corpus: quick_space_ca7_daily_s3
 questions:
   - id: v3-Q1
     text: Describe the ACP.
+    type: retrieval
+    expected_stance: answer
+    ground_truth: ACP is the Accelerated Collection Process.
+    checks:
+      required_all: [ACP]
+"""
+
+# A bank crafted so that "any column holding True" and "deterministic_pass is
+# True" disagree for one question: v3-Q2's answer satisfies required_all (so
+# required_all_pass and required_any_pass are both True) but also contains
+# the forbidden term, so forbidden_pass is False and deterministic_pass is
+# False overall. A scores.csv line for that row still contains the literal
+# substring ",True," (from the two adjacent True columns), which is exactly
+# what the old buggy count keyed on.
+PASS_COUNT_TRAP_BANK = """version: v3
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+questions:
+  - id: v3-Q1
+    text: Describe the ACP.
+    type: retrieval
+    expected_stance: answer
+    ground_truth: ACP is the Accelerated Collection Process.
+    checks:
+      required_all: [ACP]
+  - id: v3-Q2
+    text: Describe the ACP without naming the banned term.
+    type: retrieval
+    expected_stance: answer
+    ground_truth: ACP is the Accelerated Collection Process.
+    checks:
+      required_all: [ACP]
+      forbidden: [banned-term]
+  - id: v3-Q3
+    text: Describe the ACP again.
     type: retrieval
     expected_stance: answer
     ground_truth: ACP is the Accelerated Collection Process.
@@ -102,3 +138,71 @@ def test_run_help_lists_both_transports(capsys):
         main(["run", "--help"])
     out = capsys.readouterr().out
     assert "paste" in out and "playwright" in out
+
+
+def test_print_sheet_needs_only_bank_no_aws_flags(tmp_path, capsys):
+    """--print-sheet reads only the bank file; it must never demand --account-id."""
+    code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "paste",
+                 "--print-sheet"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "v3-Q1" in out
+    assert "<!-- atlas:answer v3-Q1 -->" in out
+    assert "Describe the ACP." in out
+
+
+def test_missing_bank_exits_two_without_snapshot_flags(tmp_path, capsys):
+    code = main(["run", "--bank", str(tmp_path / "nope.yaml"), "--transport", "paste"])
+    assert code == 2
+    out = capsys.readouterr().out
+    assert "account-id" not in out.lower()
+
+
+def test_missing_transcript_exits_two_without_snapshot_flags(tmp_path, capsys):
+    code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "paste"])
+    assert code == 2
+    out = capsys.readouterr().out
+    assert "--transcript" in out
+    assert "account-id" not in out.lower()
+
+
+def test_missing_url_exits_two_without_snapshot_flags(tmp_path, capsys):
+    code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "playwright"])
+    assert code == 2
+    out = capsys.readouterr().out
+    assert "--url" in out
+    assert "account-id" not in out.lower()
+
+
+def test_pass_count_matches_scores_csv_deterministic_pass_column(tmp_path, capsys):
+    """`run`'s printed pass count must agree with report's own deterministic_pass tally.
+
+    v3-Q2 is a trap: its scores.csv row has other True-valued columns
+    (required_all_pass, required_any_pass) even though deterministic_pass
+    itself is False, so a naive ",True," substring count over-reports. The
+    fixture is built so the correct pass count (2) is deliberately not equal
+    to the row count (3), so an off-by-all bug cannot pass this test.
+    """
+    bank = tmp_path / "v3.yaml"
+    bank.write_text(PASS_COUNT_TRAP_BANK)
+    transcript = tmp_path / "pasted.md"
+    transcript.write_text(
+        "<!-- atlas:answer v3-Q1 -->\nThe ACP is the Accelerated Collection Process.\n"
+        "<!-- atlas:answer v3-Q2 -->\nThe ACP is the Accelerated Collection Process, "
+        "which some call the banned-term.\n"
+        "<!-- atlas:answer v3-Q3 -->\nThe ACP is the Accelerated Collection Process.\n"
+    )
+    runs = tmp_path / "runs"
+
+    code = main(["run", "--bank", str(bank), "--transport", "paste",
+                 "--transcript", str(transcript), "--runs", str(runs), "--no-snapshot"])
+    assert code == 0
+    out = capsys.readouterr().out
+
+    run_dir = next(runs.iterdir())
+    with (run_dir / "scores.csv").open(newline="", encoding="utf-8") as fh:
+        score_rows = list(csv.DictReader(fh))
+    actual_passes = sum(1 for r in score_rows if r["deterministic_pass"] == "True")
+
+    assert actual_passes != len(score_rows), "fixture must not make pass count equal row count"
+    assert f"deterministic_pass: {actual_passes}/{len(score_rows)}" in out

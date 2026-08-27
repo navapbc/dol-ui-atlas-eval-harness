@@ -52,8 +52,14 @@ class BankNotFoundError(Exception):
     """
 
 
-def _read_deterministic_pass(run_dir: Path) -> dict[str, bool | None]:
-    """scores.csv is the record; read the deterministic column back verbatim."""
+def read_deterministic_pass(run_dir: Path) -> dict[str, bool | None]:
+    """scores.csv is the record; read the deterministic column back verbatim.
+
+    Not a private helper: `atlas_eval.cli`'s own run summary uses this too, so
+    the two commands can never again disagree about what "passed" means (they
+    used to -- the CLI counted any ``",True,"`` substring on a scores.csv line,
+    which also matches ``required_all_pass``, ``forbidden_pass``, etc.).
+    """
     out: dict[str, bool | None] = {}
     with (run_dir / "scores.csv").open(newline="", encoding="utf-8") as fh:
         for rec in csv.DictReader(fh):
@@ -89,7 +95,7 @@ def build_report(run_dir: Path, banks_dir: Path) -> RunReport:
         raise BankNotFoundError(f"no bank {meta.bank_version} under {banks_dir}")
 
     status_by_id = {q.id: q.verification.status for q in bank.questions}
-    passes = _read_deterministic_pass(run_dir)
+    passes = read_deterministic_pass(run_dir)
 
     verified_rows = [
         r for r in rows if status_by_id.get(r.question_id) is VerificationStatus.VERIFIED
