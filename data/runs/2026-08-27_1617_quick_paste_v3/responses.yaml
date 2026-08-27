@@ -1,0 +1,346 @@
+responses:
+- id: v3-Q1
+  answer: "The knowledge base has no process documented by the exact name \"Automated
+    Collection Process.\" However, the closest documented match is the Accelerated
+    Collection Process, which is the name given to program UIMB0730. If that's what
+    you're looking for, here's what's documented:\n\nUIMB0730 — Accelerated Collection
+    Process\nThis is a batch COBOL program that processes payment records received
+    from the Department of Revenue (DOR) and updates the UIMT_DOR_REFUND_PAYMENTS
+    DB2 table.UIMB0730.md\n\nEnvironment details:\n\nExecution: Batch\nDatabase: DB2\n\
+    MQ Calls: No\nModule Type: Main/Driver module\nKey processing logic:\n\nThe program
+    handles two distinct payment channels:\n\nWeb-based payments (EFT or CRD types)
+    — It matches incoming payment records to existing database entries in UIMT_DOR_REFUND_PAYMENTS
+    and updates them with processed/received dates and a match code.\n\nLockbox/coupon
+    payments — It looks up the claimant's SSN from UIMT_UNIQUE_CLAIMANT_ID and inserts
+    a new payment record into UIMT_DOR_REFUND_PAYMENTS.\n\nError handling:\n\nUnmatched
+    CRD payments are written to an error output file\nUnresolved claimant IDs are
+    also written to the error output file\nImportant note: This describes a single
+    batch program step. Upstream processes (how the DOR payment file arrives) and
+    downstream processes (what consumes the updated DB2 table) are not fully detailed
+    in this particular program's documentation.\n\nIs this the process you were asking
+    about, or were you referring to something else? There are also related debt-collection
+    concepts documented in the knowledge base — such as the DABS (Debt Automated Build
+    System) document generation process (in JCL job D2FND222) and the broader Collection
+    of Debt (COD) lifecycle tracked across claims — if either of those is a better
+    fit."
+- id: v3-Q2
+  answer: "In the LOOPS system, ACP stands for Accelerated Collection Process.06_terminology_gl...\n\
+    \nThis is documented in the LOOPS terminology glossary (06_terminology_glossary.md),
+    which cites the \"LOOPS Daily Flowchart\" as the source for this expansion. The
+    acronym is used as a prefix throughout related programs and copybooks — for example,
+    fields like ACP-DOR-VALID-PAYMENT, ACP-AMT-PAID, ACP-CLAIMANT-ID, etc. appear
+    in programs UIMB0730, UIMB0731, and copybook ACPVALID.ACPVALID.txt\nUIMB0731.txt\n\
+    UIMB0730.txt"
+- id: v3-Q3
+  answer: "This is a detailed topic that the knowledge base documents thoroughly.
+    The employer charge allocation process in LOOPS involves two phases: (1) establishing
+    each employer's charge percentage at claim setup time, and (2) distributing each
+    weekly payment proportionally against those percentages. Here's the synthesized
+    answer drawn from multiple programs:\n\nPhase 1: Establishing the Charge Percentage
+    (Claim Setup)\nThis is handled by DXCD037S (CICS monetary determination) and UIMB0004
+    (batch monetary determination). Each employer's share is computed when the claim
+    is initially filed or redetermined.DXCD037S-cbl.json\nUIMB0004.md\n\nCore formula:\n\
+    \nEmployer Charge % = Employer's Total Base-Period Wages ÷ Total Claim Base Wages\n\
+    \nAdjustments to the base formula:\nOverlap wages — If an employer's wages overlap
+    with a prior claim's base period, the overlap amount is subtracted from the numerator
+    before dividing: (Total Wages − Overlap Wages) ÷ Claim Base Wages\n50% cap (NJ
+    employers) — For BC2 and 4.2 form-type employers, the maximum charge amount (AMT-MAX-UI
+    = Charge % × MBA) cannot exceed 50% of the employer's net wages. If it does, the
+    charge % is recalculated as Capped AMT-MAX-UI ÷ MBA\nUCX/military exclusion —
+    Under UCX Periods 1 and 3, employers with form type '214' (military) are set to
+    0% and bear no charge; only NJ state employers share liability. Under Period 2,
+    all employers including military share proportionally.DXCD037S-cbl.json\nUIMB0004.md\n\
+    General Fund employer — The \"General Fund\" employer (identified by a special
+    FEIN) is skipped during the loop and receives whatever portion of the MBA remains
+    unallocated after all other employers are charged.UIMB0004.md\nThe per-employer
+    maximum charge amount (AMT-MAX-UI) is then: Charge % × MBA. A running accumulator
+    ensures the sum of all employers' max charges never exceeds the total MBA.DXCD037S-cbl.json\n\
+    UIMB0004.md\n\nPhase 2: Weekly Payment Distribution (Each Benefit Week)\nThis
+    is performed by batch program DXCBP500 (called module) and online-path program
+    UIMR0030.DXCBP500.md\nUIMR0030-cbl.json\n\nWhen a payment is issued, the WBA is
+    distributed across the employer table as follows:\n\nFor Regular UI payments (transaction
+    code < 100):\nEmployer Charge = Charge % × WBA (rounded to nearest cent)\n\nFor
+    Extended Benefits (EB) payments (transaction code ≥ 100):\nEmployer Charge = 0.5
+    × Charge % × WBA (rounded to nearest cent)\n\nThis 50% rate reflects the federal/state
+    cost-sharing arrangement for extended benefits.\n\nCapping and distribution loop:\n\
+    The system iterates through the employer table starting at position 1.\nFor each
+    employer, it calculates the proportional charge.\nCap against remaining WBA —
+    The calculated charge can never exceed the remaining unallocated portion of the
+    WBA.DXCBP500-cbl.json\nCap against employer's remaining balance — If the calculated
+    charge exceeds the employer's remaining chargeable balance (BAL-EMP-REM), the
+    charge is capped at that balance, the balance goes to zero, and only the capped
+    amount is deducted from the remaining WBA.UIMR0030-cbl.json\nDXCBP500-cbl.json\n\
+    Rounding adjustment — If deducting a charge causes the remaining WBA to go negative
+    (due to rounding), the employer's charge is reduced by the overage and remaining
+    WBA is set to zero.UIMR0030-cbl.json\nLast-employer residual — When processing
+    reaches the last employer in the table and a remaining WBA balance still exists
+    (due to rounding across multiple employers), the entire residual is assigned to
+    the last employer, ensuring the full WBA is charged out.DXCBP500.md\nDXCBP500-cbl.json\n\
+    A charge record (DB04 segment) is inserted for each employer with a non-zero charge.DXCBP500.md\n\
+    Negative payments (credits/reversals):\nWhen the WBA is negative (e.g., an interstate
+    credit adjustment), the system processes employers in reverse order, restoring
+    their balances up to their maximum benefit amount.DXCBP500.md\n\nKey Programs
+    Involved\nTable\n\n\n\nProgram\n\n\nRole\n\n\nEnvironment\n\n\nDXCD037S\tCalculates
+    charge percentages during monetary determination\tCICS\nUIMB0004\tCalculates charge
+    percentages (batch monetary)\tBatch\nDXCBP500\tDistributes weekly WBA across employers,
+    creates charge records\tBatch (called module)\nUIMR0030\tOnline employer charging
+    for weekly certification payments\tCICS (called by CWC)\nUIMB0030\tCreates/populates
+    charge segment records\tBatch\nView more\nNote: This is a synthesized summary
+    drawn from multiple source programs. The charge percentage calculation happens
+    once at claim setup (and on redetermination), while the weekly distribution happens
+    each time a payment is issued. The knowledge base documents the batch charging
+    path (DXCBP500) and the online path (UIMR0030); both implement the same core proportional
+    logic but differ in how they handle the EB employer slot and rounding adjustments.
+    If you need the specifics of either path in more detail, let me know."
+- id: v3-Q4
+  answer: "The knowledge base documents several batch programs that perform SSN validation
+    and deceased-status checking. Here's a synthesized summary across the documented
+    programs:\n\nOverview: SSN Validation & Deceased Detection in LOOPS Batch\nLOOPS
+    uses the VERIS (Verification Information System) external service — accessed via
+    MQSeries — to validate Social Security Numbers and detect whether a claimant is
+    deceased or retired. Multiple programs participate in this process, each in a
+    different context.\n\n1. UIMB0004 — Batch Monetary Determination (Initial SSN
+    Validation)\nDuring batch monetary determination (new-claim filing), UIMB0004
+    calls VERIS with the claimant's SSN and date of birth.UIMB0004.md\n\nHow it works:\n\
+    \nVERIS is called as part of the monetary-determination flow.\nIf the VERIS completion
+    code is zero (success) and the SSN return code equals '00000110', the claimant
+    is flagged as retired/deceased.\nThe system collects the three primary claim identifiers
+    (SSN, Program Code, Date of Claim) from the DB01 segment and inserts a record
+    into the UIMV_SSN_RETIRED DB2 table (Table-23).UIMB0004.md\n2. UIMB0726 — Accelerated
+    Refunds Master Processing (Multi-Source Deceased Check)\nThis program performs
+    the most comprehensive deceased-detection workflow, using three sequential sources
+    for each claimant on the Accelerated Refunds Master File.UIMB0726.md\n\nStep A:
+    Input Record Deceased Indicator\nThe Deceased Indicator on the input master record
+    is checked.\nIf non-zero → Deceased Flag = 'Y', date of death captured from the
+    master record.\nIf zero → Deceased Flag = 'N', proceed to next check.UIMB0726.md\n\
+    Step B: UIMV_SSN_RETIRED Table Lookup (only if not already deceased)\nThe claimant's
+    SSN is queried against the UIMV_SSN_RETIRED DB2 table.\nIf found → Deceased Flag
+    = 'Y', date of death set to zeroes (unknown — this table doesn't store the date
+    reliably).\nIf not found → no change, proceed to VERIS.UIMB0726.md\nStep C: VERIS
+    External Service Call (only if not already deceased AND refund > $24.99 AND VERIS
+    is available)\nSSN and DOB are passed to the called program VERISB (MQ-based).\n\
+    On success, if return code = '00000110' → deceased confirmed:\nDeceased Flag =
+    'Y'\nDate of death captured from VERIS response field VERIS-RIDDOD\nFull response
+    written to VERIS copy file (VERISCPY) for audit\nDeceased counter incremented\n\
+    VERIS Error Handling / Circuit-Breaker:\nConnection error (reason 2033): consecutive
+    counter incremented. If ≥ 20 consecutive connection errors → VERIS disabled for
+    remainder of run.\nOther errors: consecutive counter reset, total error counter
+    incremented.\nTotal threshold: if total errors > 75 → VERIS disabled for remainder
+    of run.UIMB0726.md\nDeceased Date Cleanup:\nBefore evaluating deceased status,
+    invalid deceased dates (LOW-VALUES or leading '?' characters) are cleansed to
+    zeroes.UIMB0726.md\n\n3. UIMB0072 — SSN Validity Re-Verification\nThis program
+    handles retry/re-verification of SSNs that previously failed VERIS validation.UIMB0072.md\n\
+    \nHow it works:\n\nQueries the SSN Validity table (Table-22, UIMV_SSN_VALIDITY)
+    for active records where:\nThe prior VERIS call returned a non-zero completion
+    code, or\nDependent SSNs have a validation code of '4' (unresolved)\nFor each
+    qualifying record, calls the VERISBN MQ service module to re-submit the SSN.\n\
+    Updates the existing validity record's history indicator from '0' → '1'.\nInserts
+    a new record with the latest VERIS results.\nIf VERIS returns success and the
+    SSN return code indicates a retired/deceased SSN → inserts a record into the Retired
+    SSN table (Table-23, UIMV_SSN_RETIRED), including the date of death from VERIS-RIDDOD.UIMB0072.md\n\
+    Writes an output file for downstream reporting (used by DXCVRS2B and DXCVRS3B).\n\
+    4. DXCBACP1 — Automated Collection Process (Compare/Update)\nThis program compares
+    a new extract file against the Original Master VSAM and tracks changes — including
+    changes in the Deceased Indicator and Deceased Date.DXCBACP1.md\n\nHow it works:\n\
+    \nPerforms field-level change detection across 16 fields, including Deceased Indicator
+    and Deceased Date.\nCleanses invalid deceased dates (placeholder '????????') before
+    writing to output:\nIf claimant is deceased (indicator = 1) → replaces with current
+    system date.\nIf not deceased → replaces with zeroes.\nFilters out records with
+    fraudulent SSNs from a hardcoded exclusion list of ~22 SSNs.DXCBACP1.md\n5. D2PAD180
+    — Death Record Processing Job\nThis JCL job processes death records from external
+    feeds (DABS and FLI categories).D2PAD180.md\n\nHow it works:\n\nCombines incoming
+    death data with existing death records from file LAK2LPAP.D2PAD005.DEATH.DTL.\n\
+    Sorts combined data by SSN, date, and key fields.\nRemoves duplicate death records
+    using the DEATHDUP program.\nEnriches data through database lookups.\nSplits final
+    output into 10 separate files by SSN range.\nCreates GDG (Generation Data Group)
+    backups for audit and recovery.\n6. Supporting MQ Interface Programs\nTable\n\n\
+    \n\nProgram\n\n\nRole\n\n\nSource\n\n\nVERISB\tCalled batch module — MQ interface
+    for VERIS verification (SSN + DOB in, results out)\nVERISBN\tCalled batch module
+    — same MQ interface used by UIMB0072 for re-verification\nView more\nBoth accept
+    an SSN and DOB, submit to an MQ request queue, wait for a response from the reply
+    queue, and return verification results (name, age, state, return codes).\n\n7.
+    Reporting Programs\nTable\n\n\n\nProgram\n\n\nReport\n\n\nSource\n\n\nDXCVRS2B\t
+    Verified/pended SSN report by local office (VERIS failures or Post-Randomization
+    SSNs)\nDXCVRS3B\tDependent verified SSN listing by local office\nView more\nKey
+    Data Stores\nTable\n\n\n\nTable/File\n\n\nPurpose\n\n\nUIMV_SSN_RETIRED (Table-23)\t
+    Registry of SSNs confirmed retired/deceased by VERIS\nUIMV_SSN_VALIDITY (Table-22)\t
+    SSN validity records tracking VERIS results and dependent SSN status\nLAK2LPAP.D2PAD005.DEATH.DTL\t
+    Death detail file (input to D2PAD180)\nVERISCPY (output file)\tAudit copy of VERIS
+    death confirmation responses\nView more\nSummary of the Deceased-Detection Cascade\n\
+    In the documented programs, deceased status is determined by a layered approach:\n\
+    \nInput record indicator — did a prior process already flag this claimant?\nUIMV_SSN_RETIRED
+    table — was this SSN previously confirmed retired/deceased?\nReal-time VERIS call
+    — query the external SSN verification service for current deceased status (return
+    code '00000110').\nEach layer short-circuits: once a claimant is confirmed deceased,
+    later checks are skipped.\n\nImportant caveat: This describes the programs held
+    in the Daily CA-7 knowledge space. The knowledge base does not document the full
+    upstream flow of how death records initially enter LOOPS (e.g., the SSA Death
+    Master File feed mechanism or the IVR/CICS real-time path for staff-entered death
+    notices). Those processes are separately documented outside the held code slice."
+- id: v3-Q5
+  answer: "The knowledge base does not contain any CICS screen explicitly labeled
+    \"16/16\" or \"16/17\" by those exact identifiers. However, the most likely candidates
+    — based on how LOOPS numbers its database segments and the corresponding CICS
+    display screens — are Segment 16 (Remarks) and Segment 17 (Free-Form Text / 26B)
+    of the LOOPS IMS database. These are the two \"notes\" segments on a claimant's
+    record, and CICS conversations that display claimant data typically present each
+    segment on its own screen panel.\n\nSegment 16 — Remarks (LOOPLE16)\nThis segment
+    stores structured remarks attached to a claimant's claim. Each remark is a separate
+    segment occurrence under the claimant root.LOOPLX16.txt\nLOOPLX16.cpy.csv\n\n\
+    Fields in each remark record (copybook LOOPLX16):\n\nTable\n\n\n\nField\n\n\n\
+    Type\n\n\nPurpose\n\n\nDB16-REMARKS-SEQUENCE-NUMBER\tS999 COMP-3\tOrders remarks
+    chronologically\nDB16-REMARKS-TITLE\tX(25)\tTitle/heading of the remark\nDB16-REMARKS-TEXT\t
+    X(250)\tFull text content\nDB16-LAST-MODIFY-OPERATOR-ID\tS9(4) COMP\tWho last
+    modified it\nDB16-LAST-MODIFY-LOCAL-OFFICE\tS9(4) COMP\tOffice where last modified\n\
+    DB16-LAST-DATE-MODIFIED\tS9(8) COMP\tDate of last modification\nDB16-ORIG-REMARKS-ENTRY-OP-ID\t
+    S9(4) COMP\tWho originally entered it\nDB16-ORIG-REMARKS-ENTRY-LOCOFF\tS9(4) COMP\t
+    Office where originally entered\nDB16-ORIG-REMARKS-ENTRY-DATE\tS9(8) COMP\tDate
+    originally entered\nView more\nHow it's used: Both batch and online programs insert
+    remarks here. For example, UIMB0141 inserts \"S.A.V.E PEND\" or \"S.A.V.E RESPONSE\"\
+    \ remarks when processing SAVE verification responses, and UIMB0147 inserts batch-generated
+    remarks with operator ID = 0. In online CICS, the SPAD communication area slot
+    16 (SPADDX2K-LOOPLE16) holds the current remarks segment for the active screen
+    session.UIMB0141.md\nUIMB0147.md\nDXCD035S-cbl.json\n\nSegment 17 — Free-Form
+    Text / 26B (LOOPLE17)\nThis segment stores free-form text associated with the
+    claimant, also referred to as \"26B\" records (likely named after a paper form).DXCBD09R.md\n\
+    \nFields (from the audit report program DXCBD09R):\n\nTable\n\n\n\nField\n\n\n\
+    Purpose\n\n\nPhrase Number\tIdentifies a pre-defined phrase or category\n26B History
+    Indicator\tTracks historical status\nFree-Form Text\tThe unstructured narrative
+    text itself\nPrime Date\tDate associated with the text entry\nView more\nIn online
+    CICS, the SPAD communication area slot 17 (SPADDX2K-LOOPLE17) holds this segment.DXCD035S-cbl.json\n\
+    \nKey Differences (Synthesized)\nTable\n\n\n\nAspect\n\n\nSegment 16 (Remarks)\n\
+    \n\nSegment 17 (Free-Form Text / 26B)\n\n\nStructure\tStructured: title + text
+    with full modification audit trail\tLess structured: phrase-coded free-form narrative\n\
+    Record size\t323 bytes\tVaries (documented in LOOPLX17)\nAudit tracking\tFull:
+    original and last-modified operator, office, date\tMinimal: prime date and history
+    indicator\nTypical use\tSystem-generated and staff-entered operational remarks
+    (e.g., SAVE pend, non-monetary actions)\tLonger narratives and 26B form content\n\
+    View more\nImportant Caveat\nThe exact screen identifiers \"16/16\" and \"16/17\"\
+    \ are not confirmed by literal name in the knowledge base documents. What is documented
+    is that Segments 16 and 17 are the remarks and free-form text segments of the
+    LOOPS IMS database, and that CICS online programs load them into SPAD slots 16
+    and 17 for display. The notation you're using may come from operator training
+    materials or screen navigation guides that are not in the held code slice. If
+    you can point me to where you saw \"16/16\" and \"16/17\" referenced, I can try
+    to narrow it down further."
+- id: v3-Q6
+  answer: "LOOPS determines the submission channel of a weekly certification using
+    a simple two-field decision rule based on the Operator ID and Terminal ID stamped
+    on the certification record at entry time. The logic is consistent across both
+    PAYVSAM (payment) and NOPAY (no-payment) record types.\n\nThe Channel Classification
+    Rule\nThe system evaluates the combination of two fields to classify each certification
+    into exactly one of three channels :DXCBDA2R.md\nUIMB0440.md\n\nWeekly Certification
+    Channel Classification\n\n\n\n\nChannel\n\n\nCondition\n\n\nMeaning\n\n\nWEB\t
+    Operator ID = 9000 AND Terminal ID = '7777'\tClaimant self-certified through the
+    internet portal\nPHONE/IVR\tOperator ID ≠ 9000 AND Terminal ID = '7777'\tClaimant
+    self-certified via the automated telephone (IVR) system\nManual P100 (Staff)\t
+    Terminal ID ≠ '7777'\tStaff member entered the certification manually (e.g., from
+    a P100 paper form)\nView more\nThe key insight is that Terminal ID '7777' is the
+    sentinel value assigned to all self-service channels (both web and phone). The
+    Operator ID of 9000 is then used to distinguish which self-service channel: web
+    uses 9000, IVR does not.DXCBDA2R.md\nDXCBDA2R.cbl.md\n\nWhere the Fields Come
+    From\nThe specific fields evaluated depend on whether the record is a PAYVSAM
+    or NOPAY record :DXCBDA2R.cbl.md\n\nPAYVSAM records: BP88-OPERATOR-ID-CERT and
+    BP88-TERMINAL-ID-CERT\nNOPAY records: NOPAY-OPERATOR-ID-ENTRY and NOPAY-TERMINAL-ID-ENTRY\n\
+    Downstream Usage of the Classification\nThe channel classification is used in
+    multiple programs:\n\nDXCBDA2R (Daily/Weekly Certification Audit Report): Classifies
+    every certification record and produces three separate audit reports — Overall,
+    WEB-only, and PHONE-only — with volume counts broken down by channel.DXCBDA2R.md\n\
+    UIMB0440 (Payment Extract): Sets the phone indicator field F70-PHONE-IND on the
+    payment output record: '2' = Web/Automated IVR, '1' = Phone, '0' = in-person/other.UIMB0440.md\n\
+    UIMB0441 (No-Pay Extract): Sets the Phone Claim Indicator F45 to '2' (Web or Automated
+    Phone) or '1' (Regular Phone) using the same logic.UIMB0441.md\nDecision Flow
+    (Synthesized)\nEvaluate Operator ID + Terminal ID\n       │\n       ├── Terminal
+    ID = '7777'?\n       │      │\n       │      ├── YES ──► Operator ID = 9000?\n\
+    \       │      │              │\n       │      │              ├── YES ──► WEB\n\
+    \       │      │              └── NO  ──► PHONE/IVR\n       │      │\n       │\
+    \      └── NO ──────────────────► MANUAL P100 (Staff)\nImportant Notes\nThe classification
+    is applied identically whether the certification resulted in a payment (PAYVSAM)
+    or not (NOPAY).DXCBDA2R.md\nThe real-time intake processes that originally stamp
+    these Operator ID/Terminal ID values (the IVR system and the web application)
+    live outside the held LOOPS code base. What the mainframe programs document is
+    how they read and interpret the values that were already stamped at entry time."
+- id: v3-Q7
+  answer: "The knowledge base has no system, process, interface, or artifact by the
+    name \"JPAY.\" I searched across both the terminology and the program/JCL documentation
+    and found no match for that term.\n\nClosest Documented Matches\nIf you might
+    be thinking of one of these, here are documented concepts that relate to payment
+    channels in LOOPS:\n\nTable\n\n\n\nDocumented Name\n\n\nWhat It Is\n\n\nWhere
+    Documented\n\n\nJMR\tA downstream payment release system/process. Referenced in
+    D2PAD149 (debit card claims \"not released to regular payments in JMR\") and D2FLD506
+    (FLI debit card payment listing \"in JMR\")\tDaily CA-7 space\nDebit Card Migration
+    (UIMT_DEBIT_CARD_MIGRATION table)\tDB2 table tracking claimants migrated to a
+    debit card payment method. Program UIMB0889 checks this before processing payments.\t
+    Daily CA-7 space\nAccount Type Code = 'D'\tIn the Direct Deposit Information table,
+    account type 'D' classifies a claimant's payment method as \"DEBIT CARD\" (vs.
+    Direct Deposit for any other value). Documented in UIMB0903.\tDaily CA-7 space\n\
+    View more\nPossible Explanations\nIf \"JPAY\" is a vendor brand name (e.g., the
+    JPay debit card service used in some states for incarcerated individuals' accounts):
+    The knowledge base does not document it by that commercial name. LOOPS tracks
+    debit card payments generically via the account type code and the migration table
+    above — but how those relate to a specific card vendor is not documented in the
+    held code.\nIf \"JPAY\" is a typo for \"JMR\": JMR appears to be the downstream
+    payment release mechanism that LOOPS hands off to. The knowledge base references
+    it but does not contain its own documentation — it lives outside the LOOPS code
+    slice.\nWould you like me to look deeper into how LOOPS handles debit card payments
+    specifically, or into the JMR payment release interface? Either may be what you're
+    looking for under a different name."
+- id: v3-Q8
+  answer: "The knowledge base documents municipality (MUNC) code validation across
+    several batch reporting and extract programs. The validation approach varies by
+    claim type — here's the full picture:\n\nCore Validation Rule: Range Check\nThe
+    primary validation method is a numeric range check against the valid boundary:\n\
+    \nValid Range: 01001 – 76999 (MUNCI-CUR greater than 01000 AND less than 77000)\n\
+    \nIf a municipality code falls outside this range, it is replaced with the sentinel/default
+    value 77777 (meaning \"unknown/invalid municipality\").DXCBW39E.md\nDXCBW39U.md\n\
+    DXCBW30U.md\n\nValidation Differs by Claim Type\n1. Interstate Claims (Program
+    Code 11 or 12)\nNo validation is performed. The municipality code is taken directly
+    from the claim record and assigned to the output field without any range check
+    or substitution. Processing immediately exits the classification routine.DXCBW39E.md\n\
+    \nRationale: Interstate claimants reside outside NJ, so their municipality codes
+    follow a different scheme and cannot be validated against NJ ranges.\n\n2. Special
+    Office / Out-of-State Claims (Local Office = 999 or 997, Claim Type 3)\nThe range
+    check is applied:\n\nWithin range (01001–76999): The actual municipality code
+    is retained and assigned to the output record.\nOutside range: The municipality
+    code is defaulted to 77777 (both on the current record and as the stored reference
+    value for the SSN group).\nIf MUNCI-CUR > 01000 AND MUNCI-CUR < 77000\n    → Use
+    actual municipality code\nElse\n    → Set municipality code = 77777\n3. Intrastate
+    Claims (Claim Type 1 or 4) — Reference Table Lookup\nIntrastate claims undergo
+    a more rigorous validation: the municipality code is matched against a county/municipality
+    reference table (MUNS-NAMES-CODES) using a binary search:\n\nIf the municipality
+    code on the claim matches the previous record's code, the table search is skipped
+    and the previously matched position is reused (performance optimization).DXCBW40R.md\n\
+    DXCBW38R.md\nIf the code is new/changed, a SEARCH ALL (binary search) finds the
+    municipality number in the reference table.\nMatch found: The municipality position
+    is saved and used for count accumulation in statistical reports.\nNo match found:
+    The record is written to an error/exception report (PRINT2-FILE) with the message
+    'INTRASTATE DATA WITH NO MATCH' and the unmatched counter (UNM-INTRA-CNT) is incremented.DXCBW40R.md\n\
+    DXCBW38R.md\nThe error report includes: SSN, Program Code, Transaction Code, Responsible
+    Local Office, Sex, and Municipality Code.DXCBW40R.md\nDXCBW38R.md\n\n4. Commuter
+    Claims (Interstate, Claim Type 2)\nCommuter claims use a different lookup mechanism:
+    the claim's State FIPS Code is searched against FIPS code ranges in a commuter
+    reference table (COMM-MUNS). A new search is only performed when the FIPS code
+    changes from the previous record.DXCBW38R.md\n\nSummary Table\nMunicipality Code
+    Validation by Claim Type\n\n\n\n\nClaim Type\n\n\nTrigger Condition\n\n\nValidation
+    Method\n\n\n...\n\n\nInterstate\tProgram Code 11 or 12\tNone — direct pass-through\t\
+    ...\nSpecial Office / Out-of-State\tLocal Office 999 or 997 (Type 3)\tRange check:
+    01001–76999\t...\nIntrastate\tClaim Type 1 or 4\tBinary search of county/municipality
+    reference table\t...\nCommuter\tClaim Type 2\tSequential search by FIPS code range
+    in commuter table\t...\nView more\nPrograms Documenting This Logic\nTable\n\n\n\
+    \nProgram\n\n\nContext\n\n\nSource\n\n\nDXCBW39E\tWeekly journal extract — claim
+    type classification and municipality assignment\nDXCBW30E\tWeekly statistical
+    reporting — interstate/special claims\nDXCBW39U\tWeekly extract (update variant)
+    — out-of-state validation with SSN group reference\nDXCBW30U\tWeekly statistical
+    reporting (update variant) — range validation\nDXCBW40R\tClaims-by-municipality
+    report — binary search lookup for intrastate\nDXCBW38R\tClaims-by-municipality
+    report (variant) — intrastate + commuter lookup\nView more\nImportant Notes\n\
+    The county/municipality reference table (MUNS-NAMES-CODES) used for intrastate
+    lookup is a hardcoded in-memory table within the reporting programs. It contains
+    municipality names, codes, and county assignments for all 21 NJ counties. Its
+    maintenance process is not documented in the knowledge base.\nThe 77777 default
+    is a sentinel value meaning \"unknown/unresolvable municipality\" — it appears
+    in output files and reports but is not a real NJ municipality code.\nThe validation
+    described here is in the context of batch statistical reporting and extract programs.
+    Online CICS validation of municipality codes at claim-entry time may use different
+    mechanisms (e.g., the T120/CODELOOP table), but that specific path is not documented
+    in the held code slice."

@@ -137,6 +137,10 @@ def _apply(rec: dict, det: DeterministicScore) -> None:
     rec["missing_citations"] = _joined(det.missing_citations)
 
 
+# Must match the rounding runs.py applies when writing citation_recall.
+_CSV_RECALL_PRECISION = 4
+
+
 @dataclass
 class RowDiff:
     question_id: str
@@ -149,7 +153,13 @@ class RowDiff:
             self.old.required_all_pass != self.new.required_all_pass
             or self.old.required_any_pass != self.new.required_any_pass
             or self.old.forbidden_pass != self.new.forbidden_pass
-            or self.old.citation_recall != self.new.citation_recall
+            # Compare at the precision the CSV stores (runs.py rounds to 4dp).
+            # Comparing raw floats reported a change on every rescore -- the old
+            # value is read back as 0.3333 while the recomputed one is
+            # 0.3333333..., so "0 rows changed" could never be trusted even
+            # though the written file was byte-identical.
+            or round(self.old.citation_recall, _CSV_RECALL_PRECISION)
+            != round(self.new.citation_recall, _CSV_RECALL_PRECISION)
             or self.old.deterministic_pass != self.new.deterministic_pass
             or self.old.missing_required != self.new.missing_required
             or self.old.present_forbidden != self.new.present_forbidden

@@ -1,0 +1,13 @@
+run_id: 2026-08-27_1617_quick_paste_v3
+backend: quick
+transport: paste
+bank_version: v3
+question_sha256: 
+  414d3168fc4e1d19d04ce5b59d987693c0ecfc340b21fcd417f2d7585527c7ac
+agent: engineering_onboarding_specialist
+agent_id: 093ac4e3-0712-481e-af95-9ddc5e4fc734
+conversation_id: bcb698b1-7fa8-4e24-ba23-8e08c8c1af0d
+started_at: '2026-08-27T16:17:15.747435'
+finished_at: '2026-08-27T16:17:15.747741'
+harness_git_sha: ea2600c73acefab150ed398694830a56d96cc733-dirty
+status: complete

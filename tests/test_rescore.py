@@ -252,3 +252,28 @@ def test_cli_rescore_runs_dir_processes_every_run(tmp_path, capsys):
 
     assert exit_code == 0
     assert "v1-Q1" in capsys.readouterr().out
+
+
+def test_rescore_is_idempotent_and_reports_no_change_the_second_time(tmp_path):
+    """citation_recall is stored rounded to 4dp but recomputed at full precision.
+
+    Comparing raw floats made every rescore report a change while writing a
+    byte-identical file, so "0 rows changed" could never be trusted -- which is
+    the only signal that a scorer fix had no effect on a given run.
+    """
+    from atlas_eval.rescore import RowDiff
+    from atlas_eval.scoring import DeterministicScore
+
+    def score(recall):
+        return DeterministicScore(
+            question_id="v3-Q1", stance_pass=None, required_all_pass=True,
+            required_any_pass=True, forbidden_pass=True, citation_recall=recall,
+            deterministic_pass=False,
+        )
+
+    # What the CSV holds (rounded) vs what a rescore recomputes (full precision).
+    stored, recomputed = score(0.3333), score(1 / 3)
+    assert RowDiff("v3-Q1", stored, recomputed).changed is False
+
+    # A genuine recall change is still detected.
+    assert RowDiff("v3-Q1", score(0.3333), score(0.6667)).changed is True
