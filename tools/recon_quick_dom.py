@@ -8,7 +8,7 @@ drive the conversation, then dumps the DOM and a candidate-selector report.
     .venv/bin/python tools/recon_quick_dom.py --url <quick-chat-url>
 
 Deliverables it writes into tests/fixtures/quick/:
-    <name>.agents_list.json/html    the agent-selection page (no per-agent URL exists)
+    <name>.landing.json/html        the page as the URL leaves it (default agent open)
     <name>.selectors_before.json   control inventory while idle
     <name>.selectors_after.json    control inventory once an answer finished
     <name>.html                     full DOM of the finished conversation
@@ -84,31 +84,37 @@ def main() -> int:
         page.goto(args.url)
 
         print("\n" + "=" * 70)
-        print("STEP 1 — sign in, and STOP at the agents list")
+        print("STEP 1 — sign in; the chat agent should already be open")
         print("=" * 70)
-        print("Log in via Identity Center in the browser window. Stop as soon as you can")
-        print("SEE the list of agents, WITHOUT clicking into one yet, then press Enter.")
-        print()
-        print("Why: Quick exposes no per-agent URL, so an automated run has to click")
-        print("through this list to reach the right agent. We need to know how.")
+        print("Log in via Identity Center. This URL lands directly on the Quick page with")
+        print("the default chat agent already open (in a panel, not full screen).")
+        print("Change nothing yet — press Enter as soon as it has finished loading.")
         input("> ")
 
-        agents = page.evaluate(PROBE_JS)
-        (FIXTURES / f"{args.out}.agents_list.selectors.json").write_text(
-            json.dumps(agents, indent=2)
+        landing = page.evaluate(PROBE_JS)
+        (FIXTURES / f"{args.out}.landing.selectors.json").write_text(
+            json.dumps(landing, indent=2)
         )
-        (FIXTURES / f"{args.out}.agents_list.html").write_text(page.content())
-        _report("AGENTS LIST (how automation must select the agent)", agents)
-        print(f"\n  current URL: {page.url}")
+        (FIXTURES / f"{args.out}.landing.html").write_text(page.content())
+        _report("LANDING (default agent, as the URL leaves it)", landing)
+        print(f"\n  landing URL: {page.url}")
 
         print("\n" + "=" * 70)
-        print("STEP 2 — open the agent")
+        print("STEP 2 — get it into the exact state a scored run would use")
         print("=" * 70)
-        print("Now click into the Engineering Onboarding Specialist so the chat input is")
-        print("visible, then press Enter.")
+        print("Two things, and it is fine if either is a no-op:")
+        print()
+        print("  a) If the open agent is NOT the one you want to test (Engineering")
+        print("     Onboarding Specialist), switch to it now.")
+        print("  b) If there is an expand / full-screen control for the chat, use it.")
+        print("     A scored run must always start from the same layout, and a panel")
+        print("     and an expanded view can carry different selectors.")
+        print()
+        print("Press Enter once the chat input is visible in the state a run would use.")
         input("> ")
-        print(f"  URL after opening the agent: {page.url}")
-        print("  (if this differs from the list URL, a deep link may exist after all)")
+        print(f"  URL in run state: {page.url}")
+        print("  (same as the landing URL means the state is not addressable by URL,")
+        print("   so the transport has to reproduce it by clicking)")
 
         pre = page.evaluate(PROBE_JS)
         (FIXTURES / f"{args.out}.selectors_before.json").write_text(json.dumps(pre, indent=2))

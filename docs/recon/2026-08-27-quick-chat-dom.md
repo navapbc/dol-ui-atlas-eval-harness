@@ -11,9 +11,11 @@ Captured with `tools/recon_quick_dom.py`. Fixture: `tests/fixtures/quick/convers
   --url "https://us-east-1.quicksight.aws.amazon.com/sn/account/njuimod/start/agents"
 ```
 
-Quick exposes no per-agent URL — that landing page is the entry point and you
-navigate to the agent from there. The script therefore prompts three times: at the
-agents list, after you open the agent, and after the last answer finishes.
+That URL lands directly on the Quick page with the default chat agent already
+open, in a panel rather than full screen. There is no per-agent deep link, but no
+click-through to a list is needed either. The script prompts three times: at the
+landing state, once the chat is in the state a scored run would use, and after the
+last answer finishes.
 
 A headed Chromium opens. You sign in yourself — the script never touches
 credentials and never types into a password field. It prompts twice: once after
@@ -38,20 +40,18 @@ No token, JWT, or SSN matches may remain. Mask account ids inside ARNs. If the p
 cannot be scrubbed with confidence, do not commit it — record the selectors in the
 table below instead and say so here.
 
-## Agent selection (no deep link exists)
+## Entry state (no deep link, but no list to navigate)
 
-Because there is no per-agent URL, an automated run must click through the agents
-list. This is selector surface the design did not originally account for.
+The landing URL opens with the default chat agent already active in a panel.
 
-| Purpose | Selector | Stable? | Notes |
-|---|---|---|---|
-| Agents list container | | | |
-| One agent entry | | | |
-| Entry for "Engineering Onboarding Specialist" | | | |
-
-- URL at the agents list:
-- URL after opening the agent (if it differs, a deep link may exist after all):
-- Is the agent addressable by its id (`093ac4e3-0712-481e-af95-9ddc5e4fc734`) anywhere in the DOM?
+- Is the default agent the one under test (Engineering Onboarding Specialist)? If
+  not, how is it switched, and is the switch addressable by URL?
+- Is the agent id (`093ac4e3-0712-481e-af95-9ddc5e4fc734`) present anywhere in the DOM?
+- Is there an expand / full-screen control, and do selectors differ between the
+  panel and expanded layouts? A scored run must always start from one layout.
+- Does the URL change at all between landing and run-ready state? If not, the
+  transport must reproduce the state by clicking, and cannot resume by URL after a
+  lost session.
 
 Note this affects the UI transport ONLY. `snapshot()` reads agent and space config
 through the read-only `aws quicksight` control-plane calls, which are unaffected.
