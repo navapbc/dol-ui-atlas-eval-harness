@@ -75,8 +75,40 @@ class DeterministicScore:
     missing_citations: list[str] = field(default_factory=list)
 
 
+# Typographic variants that never change the meaning of an identifier or a
+# numeric range, but do break literal matching. Folded on BOTH sides before
+# comparing.
+#
+# This is deliberately NOT done in dataset.normalize_ws: that function feeds
+# compute_question_sha256, so changing it would invalidate every frozen bank's
+# recorded hash.
+#
+# Found on the first live audit run: v3-Q8's check is the ASCII-hyphen literal
+# "01001-76999" and the agent wrote "01001\u201376999" with an EN DASH, so a
+# correct answer scored as a miss. Third instance of the same class after
+# "1.2" vs "120%" and "ACP" vs the spelled-out name.
+_DASHES = "\u002d\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
+_QUOTES_SINGLE = "\u2018\u2019\u201a\u201b\u2032"
+_QUOTES_DOUBLE = "\u201c\u201d\u201e\u201f\u2033"
+_TYPOGRAPHIC = str.maketrans(
+    {
+        **{ch: "-" for ch in _DASHES},
+        **{ch: "'" for ch in _QUOTES_SINGLE},
+        **{ch: '"' for ch in _QUOTES_DOUBLE},
+    }
+)
+
+
+def normalize_for_match(text: str) -> str:
+    """Whitespace-and-case normalization plus typographic folding.
+
+    Used only for scoring comparisons, never for hashing.
+    """
+    return normalize_ws(text).translate(_TYPOGRAPHIC)
+
+
 def _contains(haystack: str, needle: str) -> bool:
-    return normalize_ws(needle) in haystack
+    return normalize_for_match(needle) in haystack
 
 
 def score_answer(
@@ -96,7 +128,7 @@ def score_answer(
     on expect_citations fails deterministic_pass exactly like a missing
     required_all term does.
     """
-    hay = normalize_ws(answer)
+    hay = normalize_for_match(answer)
     checks = question.checks
 
     missing_required = [t for t in checks.required_all if not _contains(hay, t)]

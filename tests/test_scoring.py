@@ -153,3 +153,36 @@ def test_scoring_module_imports_nothing_networked():
     src = open(mod.__file__).read()
     for banned in ("requests", "boto3", "httpx", "urllib", "anthropic", "openai", "socket"):
         assert banned not in src, f"scoring must not reference {banned}"
+
+
+def test_typographic_variants_match_the_ascii_check_term():
+    """Regression from the first live audit run.
+
+    v3-Q8's check is the ASCII-hyphen literal "01001-76999"; the agent wrote it
+    with an EN DASH three times, so a correct answer scored as a miss. Third
+    instance of the class after "1.2" vs "120%" and "ACP" vs the full name.
+    """
+    q = _q(checks=Checks(required_all=["01001-76999"]))
+    for dash in ("-", "‐", "‑", "‒", "–", "—", "―", "−"):
+        answer = f"Valid municipality codes run 01001{dash}76999 inclusive."
+        assert score_answer(q, answer).required_all_pass, f"failed on U+{ord(dash):04X}"
+
+
+def test_curly_quotes_match_straight_quotes():
+    q = _q(checks=Checks(required_all=["'WEB '"]))
+    assert score_answer(q, "the ‘WEB ’ transaction source").required_all_pass
+
+
+def test_typographic_folding_also_applies_to_forbidden_terms():
+    # A forbidden term must not be evadable by using a fancier dash.
+    q = _q(checks=Checks(forbidden=["ETA-227"]))
+    s = score_answer(q, "This is the ETA–227 reporting process.")
+    assert s.forbidden_pass is False
+    assert s.present_forbidden == ["ETA-227"]
+
+
+def test_normalize_for_match_is_not_used_for_hashing():
+    # dataset.normalize_ws feeds compute_question_sha256; folding there would
+    # invalidate every frozen bank's recorded hash.
+    from atlas_eval.dataset import normalize_ws
+    assert normalize_ws("a–b") == "a–b".lower(), "normalize_ws must NOT fold dashes"
