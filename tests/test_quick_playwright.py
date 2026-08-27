@@ -198,6 +198,49 @@ def _wired_page_with_baseline(baseline: int):
     return page
 
 
+def _wired_page_with_unequal_baselines(footers: int, turns: int):
+    """Baselines captured while the page is mid-stream: a prior answer's turn
+    has already rendered but its footer has not (or vice versa), so the two
+    baseline counts genuinely differ at the moment ask() would capture them.
+
+    Exists so a regression that swaps which baseline feeds the wait versus
+    which feeds the indexing is detectable: with the earlier fixtures
+    (baseline_footers == baseline_turns always), such a swap is invisible --
+    the two numbers are interchangeable when equal.
+    """
+    page = FakePage()
+    page.counts[qd.SEL_INPUT] = 1
+    page.counts[qd.SEL_AI_FOOTER] = footers
+    page.counts[qd.SEL_THREAD] = 1
+    page.attrs[(qd.SEL_THREAD, "data-conversation-id")] = "conv-1"
+    page.lists[qd.SEL_AI_TURN] = [f"prior answer {k}" for k in range(1, turns + 1)]
+    page.lists[qd.SEL_STATUS] = ["New message from Engineering Onboarding Specialist"]
+    page.lists[qd.SEL_USER_TURN] = []
+    return page
+
+
+def test_ask_refuses_to_baseline_against_a_not_yet_settled_page(monkeypatch):
+    """A mid-stream prior answer renders its turn before its footer (or the
+    reverse); baselining against that moment would reintroduce the shifted
+    pairing the baselining commit exists to prevent, so ask() must refuse
+    rather than baseline against unsettled counts.
+    """
+    import atlas_eval.adapters.quick_playwright as qp
+    monkeypatch.setattr(qp.time, "sleep", lambda _ms: None)  # never actually wait
+
+    page = _wired_page_with_unequal_baselines(footers=1, turns=2)
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1")])
+
+    assert result.complete is False
+    assert result.responses == []
+    failure = (result.failure or "").lower()
+    assert "settl" in failure or "baseline" in failure, (
+        f"expected a settledness/baseline failure, got: {result.failure!r}"
+    )
+
+
 def test_ask_returns_new_answers_not_stale_ones_when_the_thread_has_prior_turns(monkeypatch):
     """The Critical: a resumed thread with prior answers must not satisfy the
     wait instantly and must not pair questions with pre-existing answers.

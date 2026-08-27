@@ -198,6 +198,19 @@ class QuickPlaywrightBackend:
         baseline_turns = len(qd.answer_texts(page))
 
         try:
+            if baseline_turns != baseline_footers:
+                # A mid-stream prior answer renders its turn before its
+                # footer (or vice versa), so the two counts genuinely differ
+                # at this instant. Baselining against either number while
+                # they disagree would reintroduce the shifted pairing this
+                # baselining commit exists to prevent, so refuse rather than
+                # guess which one is "settled."
+                raise TransportError(
+                    "PARSE_FAILED",
+                    f"page not settled before baselining: {baseline_footers} "
+                    f"completed-answer footers but {baseline_turns} agent turns "
+                    "readable; refusing to baseline against a moving target",
+                )
             _guard_auth(page)
             for index, question in enumerate(questions, 1):
                 submit_question(page, question.text)
