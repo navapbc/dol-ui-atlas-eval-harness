@@ -179,6 +179,55 @@ def _cmd_rubric_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rescore(args: argparse.Namespace) -> int:
+    from atlas_eval.rescore import RescoreError, rescore_run
+
+    banks_dir = Path(args.banks)
+
+    if args.run:
+        run_dir = Path(args.run)
+        if not run_dir.is_dir():
+            print(f"error: no such run directory: {run_dir}")
+            return 2
+        run_dirs = [run_dir]
+    else:
+        runs_dir = Path(args.runs)
+        if not runs_dir.is_dir():
+            print(f"error: no such directory: {runs_dir}")
+            return 2
+        run_dirs = sorted(p for p in runs_dir.glob("*") if p.is_dir())
+
+    had_error = False
+    for run_dir in run_dirs:
+        try:
+            result = rescore_run(run_dir, banks_dir, dry_run=args.dry_run)
+        except RescoreError as err:
+            print(f"error: {err}")
+            had_error = True
+            continue
+
+        if result.status == "skipped-legacy":
+            print(
+                f"{result.run_id}: skipped -- question_sha256 is 'legacy-unknown'. "
+                "This run predates hash tracking, so there is no recorded hash to "
+                "verify the bank against; rescoring it would risk silently "
+                "fabricating comparability, so it is left untouched."
+            )
+            continue
+
+        changed = result.changed_diffs
+        if not changed:
+            print(f"{result.run_id}: no changes.")
+            continue
+
+        for d in changed:
+            print(f"{result.run_id}: {d.describe()}")
+        verb = "would rewrite" if args.dry_run else "rewrote"
+        print(f"{result.run_id}: {verb} scores.csv ({len(changed)} row(s) changed)")
+
+    return 2 if had_error else 0
+
+
 def _cmd_rollup(args: argparse.Namespace) -> int:
     import difflib
     import tempfile
@@ -434,6 +483,19 @@ def main(argv: list[str] | None = None) -> int:
     p_rubric_imp.add_argument("--confirmed-by", help="the human signing off on these scores")
     p_rubric_imp.add_argument("--dry-run", action="store_true")
     p_rubric_imp.set_defaults(func=_cmd_rubric_import)
+
+    p_rescore = sub.add_parser(
+        "rescore", help="reapply the current deterministic scorer to a recorded run"
+    )
+    p_rescore_target = p_rescore.add_mutually_exclusive_group(required=True)
+    p_rescore_target.add_argument("--run", help="a single run directory")
+    p_rescore_target.add_argument("--runs", help="rescore every run in this directory")
+    p_rescore.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_rescore.add_argument(
+        "--dry-run", action="store_true",
+        help="report what would change without writing scores.csv",
+    )
+    p_rescore.set_defaults(func=_cmd_rescore)
 
     p_rollup = sub.add_parser("rollup", help="regenerate data/scores.csv from data/runs")
     p_rollup.add_argument("--runs", default="data/runs")
