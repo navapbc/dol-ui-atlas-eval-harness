@@ -72,9 +72,24 @@ class ScoreRow(BaseModel):
     deterministic: DeterministicScore | None = None
 
 
-def make_run_id(finished: datetime, backend: str, bank_version: str) -> str:
-    """Match the legacy `<date>_<HHMM>` stamp used by chats/ and snapshots/."""
-    return f"{finished:%Y-%m-%d_%H%M}_{backend}_{bank_version}"
+def make_run_id(finished: datetime, backend: str, transport: str, bank_version: str) -> str:
+    """Build a run id unique enough that two real runs cannot collide.
+
+    Based on the legacy `<date>_<HHMM>_<backend>_<bank_version>` stamp used by
+    chats/ and snapshots/, with the transport inserted before the bank
+    version. The transport is required, not optional, because both real
+    backends report `name == "quick"`: without it, a paste run and a
+    playwright run of the same bank in the same minute produce the identical
+    id, and `write_run` writing into that id would silently overwrite one
+    run's files with the other's.
+
+    Migrated run directories under data/runs/ were written before this
+    function grew the transport component and keep their old
+    `<date>_<HHMM>_<backend>_<bank_version>` shape; read_run and
+    regenerate_rollup read a run directory's contents directly and never
+    parse the run_id string, so those old directories keep working unchanged.
+    """
+    return f"{finished:%Y-%m-%d_%H%M}_{backend}_{transport}_{bank_version}"
 
 
 def _plain(node):
@@ -157,6 +172,15 @@ def write_run(
     rows: list[ScoreRow],
 ) -> Path:
     run_dir = runs_dir / meta.run_id
+    if run_dir.exists() and any(run_dir.iterdir()):
+        raise FileExistsError(
+            f"refusing to write into {run_dir}: it already exists and is not "
+            "empty. Writing here would silently overwrite a previous run's "
+            "files (this is exactly how a same-minute retry destroyed a "
+            "complete run before this guard existed). If this run_id is a "
+            "genuine, unexpected collision, investigate before removing the "
+            "existing directory by hand."
+        )
     run_dir.mkdir(parents=True, exist_ok=True)
 
     with (run_dir / "run.yaml").open("w", encoding="utf-8") as fh:

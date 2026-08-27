@@ -165,7 +165,7 @@ def run_bank(
 
     status = RunStatus.COMPLETE if (result.complete and not problems) else RunStatus.INCOMPLETE
     meta = RunMeta(
-        run_id=make_run_id(finished, backend.name, bank.version),
+        run_id=make_run_id(finished, backend.name, backend.transport, bank.version),
         backend=backend.name,
         transport=backend.transport,
         bank_version=bank.version,
@@ -183,8 +183,15 @@ def run_bank(
     if failure:
         transcript += f"\n---\n\n**Run failure:** {failure}\n"
 
-    return write_run(
-        runs_dir, meta,
-        {r.question_id: r.answer for r in clean_responses},
-        transcript, snapshot, rows,
-    )
+    try:
+        return write_run(
+            runs_dir, meta,
+            {r.question_id: r.answer for r in clean_responses},
+            transcript, snapshot, rows,
+        )
+    except FileExistsError as err:
+        # A collision here means make_run_id's inputs (finished-minute,
+        # backend, transport, bank_version) really did repeat -- surface it
+        # as an OrchestrationError, same as any other reason a run couldn't
+        # be started, rather than a raw traceback out of run_bank.
+        raise OrchestrationError(str(err)) from err

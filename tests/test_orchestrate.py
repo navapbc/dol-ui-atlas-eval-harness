@@ -168,6 +168,35 @@ def test_orchestrator_never_writes_a_rubric_value(tmp_path):
         assert dim not in src, f"orchestrator must not set {dim}"
 
 
+class TransportStubBackend(StubBackend):
+    """StubBackend with a configurable transport, to reproduce the finding that
+    both real transports report backend.name == 'quick' and so need the
+    transport itself in the run id to avoid colliding."""
+
+    def __init__(self, answers, transport, **kwargs):
+        super().__init__(answers, **kwargs)
+        self.transport = transport
+
+
+def test_paste_and_playwright_runs_of_the_same_bank_in_the_same_minute_do_not_collide(
+    tmp_path,
+):
+    runs_dir = tmp_path / "runs"
+    bank = _bank_file(tmp_path)
+    same_minute = datetime(2026, 8, 27, 9, 30)
+
+    paste_dir = run_bank(bank, TransportStubBackend(GOOD, "paste"), runs_dir, now=same_minute)
+    playwright_dir = run_bank(
+        bank, TransportStubBackend(GOOD, "playwright"), runs_dir, now=same_minute
+    )
+
+    assert paste_dir != playwright_dir
+    for run_dir in (paste_dir, playwright_dir):
+        meta, responses, rows = read_run(run_dir)
+        assert meta.status.value == "complete"
+        assert len(responses) == 2
+
+
 class ScriptedBackend:
     """A backend that returns exactly the AskResult it is handed, unfiltered.
 

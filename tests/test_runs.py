@@ -50,10 +50,16 @@ def test_rollup_starts_with_the_exact_legacy_columns():
     assert len(ROLLUP_COLUMNS) > len(LEGACY), "new columns must append, not replace"
 
 
-def test_make_run_id_matches_the_legacy_timestamp_shape():
-    assert make_run_id(datetime(2026, 8, 12, 17, 4), "quick", "v5") == (
-        "2026-08-12_1704_quick_v5"
-    )
+def test_make_run_id_includes_the_transport():
+    # Both real transports report backend name "quick", so the id must carry
+    # the transport too, or a paste run and a playwright run of the same bank
+    # in the same minute produce the identical run_id and collide.
+    paste_id = make_run_id(datetime(2026, 8, 12, 17, 4), "quick", "paste", "v5")
+    playwright_id = make_run_id(datetime(2026, 8, 12, 17, 4), "quick", "playwright", "v5")
+    assert paste_id != playwright_id
+    assert "paste" in paste_id
+    assert "playwright" in playwright_id
+    assert paste_id == "2026-08-12_1704_quick_paste_v5"
 
 
 def test_write_then_read_round_trips(tmp_path):
@@ -211,6 +217,42 @@ def test_cli_rollup_check_passes_when_up_to_date(tmp_path, capsys):
     assert exit_code == 0
     assert "up to date" in capsys.readouterr().out
     assert out.read_text() == before, "--check must not rewrite the file"
+
+
+def test_write_run_refuses_to_overwrite_an_existing_nonempty_run_dir(tmp_path):
+    # Reproduces the critical finding: a complete 8-answer run followed by a
+    # 1-answer incomplete retry that happens to land on the same run_id (same
+    # minute, same backend/transport/bank) must not silently destroy the
+    # first run's files.
+    meta = _meta(run_id="2026-08-27_0900_quick_paste_v3")
+    complete_responses = {f"v1-Q{i}": f"answer {i}" for i in range(1, 9)}
+    complete_rows = [_row(f"v1-Q{i}") for i in range(1, 9)]
+    write_run(tmp_path, meta, complete_responses, "# complete transcript\n",
+              {"agent": {}}, complete_rows)
+
+    retry_meta = _meta(run_id="2026-08-27_0900_quick_paste_v3",
+                       status=RunStatus.INCOMPLETE, finished_at=None)
+    try:
+        write_run(tmp_path, retry_meta, {"v1-Q1": "partial"}, "# partial\n",
+                  {}, [_row("v1-Q1")])
+        raised = False
+    except FileExistsError:
+        raised = True
+    assert raised, "write_run must refuse to overwrite an existing non-empty run directory"
+
+    # The original complete run's files must be untouched.
+    got_meta, got_responses, got_rows = read_run(tmp_path / meta.run_id)
+    assert got_meta.status is RunStatus.COMPLETE
+    assert len(got_responses) == 8
+    assert len(got_rows) == 8
+
+
+def test_write_run_allows_writing_into_a_preexisting_empty_directory(tmp_path):
+    run_dir = tmp_path / "2026-08-27_0900_quick_paste_v3"
+    run_dir.mkdir(parents=True)
+    meta = _meta(run_id=run_dir.name)
+    write_run(tmp_path, meta, {"v1-Q1": "a"}, "t", {}, [_row("v1-Q1")])
+    assert (run_dir / "run.yaml").exists()
 
 
 def test_cli_rollup_check_fails_and_reports_the_diff_when_stale(tmp_path, capsys):
