@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from atlas_eval.adapters import quick_dom as qd
 
 FIXTURE = Path("tests/fixtures/quick/sanitized_conversation_complete.html")
+THIS_FILE = Path(__file__)
 
 
 @pytest.fixture(scope="module")
@@ -23,6 +25,63 @@ def page():
         pg.goto("file://" + str(FIXTURE.resolve()))
         yield pg
         browser.close()
+
+
+def test_page_fixture_disables_javascript():
+    """Guard against silently dropping java_script_enabled=False.
+
+    Why not a direct before/after divergence test on the fixture: the
+    committed sanitized fixture has had every <script> tag stripped (confirmed:
+    it contains zero <script> elements), so loading it with JavaScript enabled
+    produces byte-identical extraction results to loading it disabled in this
+    headless file:// context -- there is nothing left to re-mount and wipe the
+    markup. That wipe is real (it happened during recon against the live,
+    unsanitized capture, which does carry scripts), but it cannot be
+    reproduced against the fixture actually committed to this repo without
+    fabricating a passing test around behavior this suite cannot observe.
+
+    So this test pins the actual code instead of the symptom: it parses this
+    test file's AST, finds the `page` fixture, and fails if its
+    browser.new_context(...) call ever stops passing
+    java_script_enabled=False. If you are reading this because it just failed:
+    you (or a refactor) removed that flag. Put it back. Without it, the real
+    (unsanitized) capture's own React scripts re-mount and wipe the DOM you
+    just loaded, every quick_dom selector then finds nothing, and every other
+    test in this file passes for the wrong reason -- silently, since an empty
+    result and a "correct" one look the same to a naive assertion.
+    """
+    tree = ast.parse(THIS_FILE.read_text())
+    page_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "page"
+    )
+    new_context_calls = [
+        node
+        for node in ast.walk(page_fn)
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "new_context"
+    ]
+    assert new_context_calls, "page fixture no longer calls browser.new_context(...) at all"
+
+    for call in new_context_calls:
+        for kw in call.keywords:
+            if kw.arg == "java_script_enabled":
+                assert isinstance(kw.value, ast.Constant) and kw.value.value is False, (
+                    "page fixture's new_context() passes java_script_enabled="
+                    f"{ast.dump(kw.value)!r}, not False -- the real capture is a "
+                    "React SPA whose own scripts re-mount and wipe the captured "
+                    "markup once JS is allowed to run, which turns every "
+                    "quick_dom selector into a silent empty result"
+                )
+                return
+
+    pytest.fail(
+        "page fixture's new_context() no longer passes java_script_enabled=False "
+        "at all -- the real capture is a React SPA whose own scripts re-mount "
+        "and wipe the captured markup once JS is allowed to run, which turns "
+        "every quick_dom selector into a silent empty result and every test in "
+        "this file into a false positive"
+    )
 
 
 def test_fixture_exists_and_is_sanitized():
@@ -81,11 +140,16 @@ def test_auth_redirect_detection():
 
 
 def test_selectors_avoid_the_ruled_out_mechanisms():
-    src = open(qd.__file__).read()
     # aria-busy was absent at every capture point; base-ui ids churned 16/55
     # within a single session. Either would produce silent, intermittent failure.
-    assert "aria-busy" not in src
-    assert "base-ui" not in src
+    # Scoped to the SEL_* constants themselves (the actual selectors used at
+    # runtime), not the whole module source -- a whole-file scan also trips on
+    # comments/docstrings that merely explain the exclusion, like this one.
+    selectors = {k: v for k, v in vars(qd).items() if k.startswith("SEL_")}
+    assert selectors, "expected at least one SEL_* constant in quick_dom"
+    for name, value in selectors.items():
+        assert "aria-busy" not in value, f"{name} = {value!r} uses the ruled-out aria-busy attribute"
+        assert "base-ui" not in value, f"{name} = {value!r} uses the ruled-out base-ui id shape"
 
 
 def test_module_never_imports_the_scorer():
