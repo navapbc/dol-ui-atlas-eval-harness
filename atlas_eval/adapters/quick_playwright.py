@@ -124,7 +124,22 @@ class QuickPlaywrightBackend:
         self._page = page  # injected in tests; a live page in real runs
 
     def snapshot(self) -> dict:
-        return self._snapshot
+        """The AWS-sourced snapshot, plus the model chip read from the page.
+
+        Called after ask() by run_bank, so by the time this runs the page has
+        rendered at least one answer and the model chip (if the UI shows one
+        at all). Read here rather than in ask() because there is nowhere in
+        ask()'s per-question loop that is obviously "the" place to read a
+        page-wide, not-per-answer fact -- snapshot() already is that place
+        for everything else. Merged into a copy so the caller-supplied
+        snapshot_data is never mutated.
+        """
+        data = dict(self._snapshot)
+        if self._page is not None:
+            chip = qd.model_chip(self._page)
+            if chip:
+                data["model_chip"] = chip
+        return data
 
     def _check_agent(self, page) -> None:
         """Confirm the completion banner named the agent under test.

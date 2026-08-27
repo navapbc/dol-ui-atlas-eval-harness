@@ -127,6 +127,20 @@ def test_backend_satisfies_the_protocol_and_never_scores():
     assert "scoring" not in open(mod.__file__).read()
 
 
+def test_snapshot_never_carries_a_model_chip_key():
+    # Documented decision: the paste transport has no page to read a model
+    # chip from, so it must never add a "model_chip" key -- an absent key is
+    # fine (render_transcript already handles that), but the two transports
+    # disagreeing about the KEY's presence by accident would not be.
+    backend = QuickPasteBackend(
+        agent="engineering_onboarding_specialist",
+        snapshot_data={"agent": {"Name": "Engineering Onboarding Specialist"}},
+        transcript_text=f"{_marker('v3-Q1')}\nan answer\n",
+    )
+    backend.ask([_q("v3-Q1")])
+    assert "model_chip" not in backend.snapshot()
+
+
 def test_backend_conforms_to_the_backend_protocol():
     backend = QuickPasteBackend(
         agent="engineering_onboarding_specialist",

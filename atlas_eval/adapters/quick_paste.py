@@ -203,6 +203,11 @@ class QuickPasteBackend:
         self._text = transcript_text
 
     def snapshot(self) -> dict:
+        # Deliberately never adds a "model_chip" key: this transport has no
+        # page to read one from (the operator drives Quick by hand and pastes
+        # the result). render_transcript already treats an absent key as "no
+        # model to report" -- see QuickPlaywrightBackend.snapshot for the
+        # transport that does have a page to read the chip from.
         return self._snapshot
 
     def ask(self, questions: list[Question]) -> AskResult:

@@ -463,6 +463,36 @@ def test_ask_skips_the_agent_check_when_no_agent_is_expected():
     assert len(result.responses) == 2
 
 
+def test_snapshot_includes_the_model_chip_read_from_the_page_after_asking():
+    """Reproduces the finding: transcript.py reads snapshot["model_chip"], but
+    snapshot.capture() never emits it and neither backend ever called
+    qd.model_chip(page) to put it there -- so the recon note's "worth
+    capturing" field was dead outside of tests. The Playwright backend has a
+    page, so it is the one that should read the chip.
+    """
+    page = _wired_page(2)
+    page.counts[qd.SEL_MODEL_CHIP] = 1
+    page.texts[qd.SEL_MODEL_CHIP] = "Advanced"
+
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q",
+                                     snapshot_data={"agent": {"AgentId": "x"}}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+    assert result.complete is True, result.failure
+
+    snap = backend.snapshot()
+    assert snap["model_chip"] == "Advanced"
+    assert snap["agent"]["AgentId"] == "x", "the AWS-sourced snapshot data must survive"
+
+
+def test_snapshot_omits_the_model_chip_key_when_the_page_never_shows_one():
+    page = _wired_page(2)  # no SEL_MODEL_CHIP registered at all
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+    assert "model_chip" not in backend.snapshot()
+
+
 def test_backend_conforms_to_the_backend_protocol():
     page = _wired_page(2)
     backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
