@@ -12,7 +12,10 @@ AGENTS = {"AgentSummaryList": [
 ]}
 AGENT = {"Agent": {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
                    "Name": "Engineering Onboarding Specialist",
-                   "Instructions": "you are an onboarding specialist"}}
+                   "CustomPromptInterface": {
+                       "CustomInstructions": "you are an onboarding specialist",
+                       "ModelProfileId": "c394c917-e855-4485-ba79-f96d9461d551",
+                   }}}
 SPACES = {"SpaceSummaryList": [{"SpaceId": "s1", "Name": "quick_space_ca7_daily_s3"}]}
 
 
@@ -33,6 +36,7 @@ def test_capture_records_agent_and_spaces():
                                           "describe-agent": AGENT,
                                           "list-spaces": SPACES}))
     assert snap["agent"]["Name"] == "Engineering Onboarding Specialist"
+    assert snap["agent"]["Instructions"] == "you are an onboarding specialist"
     assert snap["spaces"][0]["Name"] == "quick_space_ca7_daily_s3"
     assert snap["captured_with"] == "aws quicksight (read-only)"
 
@@ -89,51 +93,117 @@ def test_bad_json_surfaces_as_snapshot_error():
 
 
 # ---------------------------------------------------------------------------
-# Finding 1: snapshots must not leak account ids or emails, ARNs included.
+# Finding 1, fix pass 2: denylist scrubbing caught the account id and
+# email-shaped strings but let a username inside an ARN, a CreatedBy, an
+# Owner block, a tag value, and a role name through - none of those match
+# an account-id or email pattern. The fix replaces scrubbing-only with a
+# projection onto an allowlist: fields not on the allowlist are dropped
+# regardless of what they contain, so an unrecognised leak shape cannot
+# survive by accident.
 # ---------------------------------------------------------------------------
 
 REAL_ACCOUNT_ID = "<ACCOUNT-ID>"
 
-ARN_AGENTS = {"AgentSummaryList": [
-    {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
-     "Name": "Engineering Onboarding Specialist",
-     "Arn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:agent/093ac4e3-0712-481e-af95-9ddc5e4fc734"},
-]}
-ARN_AGENT = {"Agent": {
+# Mirrors the four leaks the reviewer demonstrated getting past the old
+# scrubber: a username inside an IAM ARN, a plain CreatedBy, a tag value,
+# and a role name embedding a username.
+LEAKY_AGENT = {"Agent": {
     "AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
     "Name": "Engineering Onboarding Specialist",
-    "Arn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:agent/093ac4e3-0712-481e-af95-9ddc5e4fc734",
-    "CreatedBy": "<EMAIL>",
+    "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/michael.angeli",
+    "CreatedBy": "michael.angeli",
+    "Owner": {"Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:role/created-by-jdoe-admin-role"},
+    "Tags": [{"Key": "Owner", "Value": "jdoe"}],
+    "CustomPromptInterface": {
+        "CustomInstructions": "you are an onboarding specialist",
+        "ModelProfileId": "c394c917-e855-4485-ba79-f96d9461d551",
+    },
+    "CreatedAt": "2026-06-10T18:19:25.328000-04:00",
 }}
-ARN_SPACES = {"SpaceSummaryList": [
+LEAKY_AGENTS = {"AgentSummaryList": [
+    {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
+     "Name": "Engineering Onboarding Specialist",
+     "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/michael.angeli"},
+]}
+LEAKY_SPACES = {"SpaceSummaryList": [
     {"SpaceId": "s1", "Name": "quick_space_ca7_daily_s3",
-     "Arn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:space/s1",
-     "Details": {
-         "Owner": {
-             "Arn": f"arn:aws:ds:us-east-1:{REAL_ACCOUNT_ID}:federated/iam/AWSReservedSSO_Admin/<EMAIL>",
-             "Email": "<EMAIL>",
-         }
-     }},
+     "createdBy": "AWSReservedSSO_AWSAdministratorAccess_x/<EMAIL>",
+     "createdByArn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:user/default/michael.angeli",
+     "Tags": [{"Key": "Owner", "Value": "jdoe"}],
+     "resourcesCount": 1, "consumedSourceDocCount": 28},
 ]}
 
 
-def test_account_id_and_email_scrubbed_from_arns_and_nested_fields():
+def test_allowlist_projection_drops_identity_leaks_the_old_scrubber_missed():
     snap = capture(REAL_ACCOUNT_ID, agent_id="093ac4e3-0712-481e-af95-9ddc5e4fc734",
-                   runner=_runner([], {"list-agents": ARN_AGENTS, "describe-agent": ARN_AGENT,
-                                       "list-spaces": ARN_SPACES}))
+                   runner=_runner([], {"list-agents": LEAKY_AGENTS, "describe-agent": LEAKY_AGENT,
+                                       "list-spaces": LEAKY_SPACES}))
     dumped = json.dumps(snap)
 
-    assert REAL_ACCOUNT_ID not in dumped
-    assert "dol.nj.gov" not in dumped
-    assert "@" not in dumped
+    # The four leaks the reviewer demonstrated.
+    assert "michael.angeli" not in dumped
+    assert "jdoe" not in dumped
+    assert "created-by-jdoe-admin-role" not in dumped
+    assert f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/michael.angeli" not in dumped
 
-    # ARN shape and resource path survive - only the identifying number is gone.
-    assert snap["agent"]["Arn"] == "arn:aws:quicksight:us-east-1:<ACCOUNT-ID>:agent/093ac4e3-0712-481e-af95-9ddc5e4fc734"
-    assert snap["spaces"][0]["Details"]["Owner"]["Arn"] == (
-        "arn:aws:ds:us-east-1:<ACCOUNT-ID>:federated/iam/AWSReservedSSO_Admin/<EMAIL>"
-    )
-    assert snap["spaces"][0]["Details"]["Owner"]["Email"] == "<EMAIL>"
-    assert snap["agent"]["CreatedBy"] == "<EMAIL>"
+    # The keys that carried them are gone entirely, not just redacted.
+    assert "Arn" not in snap["agent"]
+    assert "CreatedBy" not in snap["agent"]
+    assert "Owner" not in snap["agent"]
+    assert "Tags" not in snap["agent"]
+    assert "createdBy" not in snap["spaces"][0]
+    assert "createdByArn" not in snap["spaces"][0]
+    assert "Tags" not in snap["spaces"][0]
+
+
+def test_allowlisted_fields_survive_the_projection():
+    # Dropping instructions would silently make snapshots useless, so this
+    # is the field most worth pinning as surviving.
+    snap = capture(REAL_ACCOUNT_ID, agent_id="093ac4e3-0712-481e-af95-9ddc5e4fc734",
+                   runner=_runner([], {"list-agents": LEAKY_AGENTS, "describe-agent": LEAKY_AGENT,
+                                       "list-spaces": LEAKY_SPACES}))
+    assert snap["agent"]["AgentId"] == "093ac4e3-0712-481e-af95-9ddc5e4fc734"
+    assert snap["agent"]["Name"] == "Engineering Onboarding Specialist"
+    assert snap["agent"]["Instructions"] == "you are an onboarding specialist"
+    assert snap["agent"]["ModelId"] == "c394c917-e855-4485-ba79-f96d9461d551"
+    assert snap["agent"]["CreatedAt"] == "2026-06-10T18:19:25.328000-04:00"
+    assert snap["agent_list"][0]["AgentId"] == "093ac4e3-0712-481e-af95-9ddc5e4fc734"
+    assert snap["spaces"][0]["SpaceId"] == "s1"
+    assert snap["spaces"][0]["Name"] == "quick_space_ca7_daily_s3"
+    assert snap["spaces"][0]["ResourcesCount"] == 1
+    assert snap["spaces"][0]["ConsumedSourceDocCount"] == 28
+
+
+def test_unexpected_new_field_does_not_leak_through():
+    # Pins the actual property the allowlist buys over denylist scrubbing:
+    # a field this code has never seen before is dropped by construction,
+    # not merely scrubbed if it happens to resemble an account id or email.
+    agent = {"Agent": {**LEAKY_AGENT["Agent"],
+                       "SomeFieldAwsAddsNextQuarter": "internal-secret-xyz"}}
+    snap = capture(REAL_ACCOUNT_ID, agent_id="093ac4e3-0712-481e-af95-9ddc5e4fc734",
+                   runner=_runner([], {"list-agents": LEAKY_AGENTS, "describe-agent": agent,
+                                       "list-spaces": LEAKY_SPACES}))
+    dumped = json.dumps(snap)
+    assert "SomeFieldAwsAddsNextQuarter" not in dumped
+    assert "internal-secret-xyz" not in dumped
+
+
+def test_instructions_stays_scrubbed_despite_being_allowlisted():
+    # Instructions is free text a human wrote and could itself name someone,
+    # so being on the allowlist must not exempt it from _scrub.
+    agent = {"Agent": {
+        **LEAKY_AGENT["Agent"],
+        "CustomPromptInterface": {
+            "CustomInstructions": (
+                f"Contact ops@dol.nj.gov or account {REAL_ACCOUNT_ID} for access."
+            ),
+        },
+    }}
+    snap = capture(REAL_ACCOUNT_ID, agent_id="093ac4e3-0712-481e-af95-9ddc5e4fc734",
+                   runner=_runner([], {"list-agents": LEAKY_AGENTS, "describe-agent": agent,
+                                       "list-spaces": LEAKY_SPACES}))
+    assert "@" not in snap["agent"]["Instructions"]
+    assert REAL_ACCOUNT_ID not in snap["agent"]["Instructions"]
 
 
 # ---------------------------------------------------------------------------

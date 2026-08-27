@@ -108,6 +108,93 @@ def _scrub(value, account_id: str):
     return value
 
 
+# ---------------------------------------------------------------------------
+# Projection: keep only the fields a snapshot needs, drop everything else.
+#
+# A denylist scrubber (_scrub, above) can only redact the shapes it already
+# knows to look for - an account id, an email address. It has no way to
+# catch a username inside an IAM ARN, a CreatedBy field, an Owner block, a
+# tag value, or a role name: those don't match either pattern, so they sail
+# through untouched. That is the same operator-identity leak the account-id
+# fix was about, just without an '@' to match on, and each new pattern added
+# to catch it would be one more guess about how a person's identity might
+# show up in a string.
+#
+# The fix is to stop trying to recognise identity strings and instead keep
+# only the handful of fields a snapshot actually needs to make an old score
+# interpretable: what agent produced it (id, name, instructions, model), and
+# what corpus it could draw on (which spaces, roughly how big). Everything
+# else describe-agent / list-agents / list-spaces returns - Arn, Creator,
+# CreatedBy, Owner, Tags, ActionConnectors, QbsAwsAccountId, SubscriptionId,
+# and any field AWS adds later - is dropped by construction, not by
+# recognising it as sensitive. A field only ends up in a snapshot if someone
+# adds it to one of the projections below on purpose.
+#
+# Field names below come from data/runs/*/snapshot.json (40 migrated
+# snapshots of real describe-agent / list-spaces responses), not from
+# guessing at AWS's shape. Notably the real instructions field lives at
+# Agent.CustomPromptInterface.CustomInstructions, not a flat "Instructions"
+# key, and the model lives at CustomPromptInterface.ModelProfileId. The real
+# list-spaces payloads observed use lowercase spaceId/name/resourcesCount/
+# consumedSourceDocCount/consumedSourceSize; both that casing and the
+# PascalCase the rest of this API uses are accepted, since this projection
+# should not have an opinion about which one a given AWS response uses.
+# ---------------------------------------------------------------------------
+
+
+def _first_present(d: dict, *keys):
+    """Return the value of the first key in `keys` that is present in `d`."""
+    for key in keys:
+        if key in d:
+            return d[key]
+    return None
+
+
+def _project_agent(agent: dict) -> dict:
+    """Project a describe-agent Agent onto the allowlisted fields.
+
+    Instructions is the most important field here: a changed prompt is the
+    most likely cause of a score shift, and it is also the one most likely
+    to contain free text a human wrote - so it stays subject to _scrub (see
+    capture()) even though it is allowlisted.
+    """
+    custom_prompt = agent.get("CustomPromptInterface") or {}
+    projected = {
+        "AgentId": agent.get("AgentId"),
+        "Name": agent.get("Name"),
+        "Instructions": custom_prompt.get("CustomInstructions", agent.get("Instructions")),
+        "ModelId": custom_prompt.get("ModelProfileId", agent.get("ModelId")),
+        "CreatedAt": agent.get("CreatedAt"),
+        "UpdatedAt": agent.get("UpdatedAt"),
+    }
+    return {k: v for k, v in projected.items() if v is not None}
+
+
+def _project_agent_summary(summary: dict) -> dict:
+    """Project a list-agents summary: just enough to tell which agents existed."""
+    projected = {"AgentId": summary.get("AgentId"), "Name": summary.get("Name")}
+    return {k: v for k, v in projected.items() if v is not None}
+
+
+def _project_space(space: dict) -> dict:
+    """Project a list-spaces summary onto id, name, and corpus size.
+
+    The linked corpus is what determines what the agent can retrieve, so a
+    rough size (document count / byte size) is kept as the closest thing to
+    a resource identifier the real payloads carry - there is no distinct
+    per-resource id or arn in the data this was checked against.
+    """
+    projected = {
+        "SpaceId": _first_present(space, "SpaceId", "spaceId"),
+        "Name": _first_present(space, "Name", "name"),
+        "ResourcesCount": _first_present(space, "ResourcesCount", "resourcesCount"),
+        "ConsumedSourceDocCount": _first_present(
+            space, "ConsumedSourceDocCount", "consumedSourceDocCount"),
+        "ConsumedSourceSize": _first_present(space, "ConsumedSourceSize", "consumedSourceSize"),
+    }
+    return {k: v for k, v in projected.items() if v is not None}
+
+
 def capture(
     account_id: str,
     agent_id: str | None = None,
@@ -142,8 +229,11 @@ def capture(
     snapshot = {
         "captured_with": "aws quicksight (read-only)",
         "operations": list(READ_ONLY_OPS),
-        "agent": agent.get("Agent", {}),
-        "agent_list": agents.get("AgentSummaryList", []),
-        "spaces": spaces.get("SpaceSummaryList", []),
+        "agent": _project_agent(agent.get("Agent", {})),
+        "agent_list": [_project_agent_summary(a) for a in agents.get("AgentSummaryList", [])],
+        "spaces": [_project_space(s) for s in spaces.get("SpaceSummaryList", [])],
     }
+    # The projection above already drops ARNs/CreatedBy/Owner/tags/etc, but
+    # the scrubber still runs over what's left as defence in depth: Instructions
+    # is free text a human wrote and could itself name someone.
     return _scrub(snapshot, account_id)
