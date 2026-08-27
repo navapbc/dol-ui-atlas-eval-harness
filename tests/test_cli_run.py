@@ -185,6 +185,64 @@ def test_context_is_closed_when_goto_fails_before_the_run_starts(tmp_path, monke
     assert ctx.closed, "the context must be closed even when goto raises before the run"
 
 
+class _OkPage:
+    """A page whose .goto succeeds, so the flow can reach run_bank if the
+    hash check doesn't stop it first."""
+
+    def goto(self, url):
+        pass
+
+
+def test_playwright_transport_refuses_a_frozen_hash_mismatch_before_opening_a_browser(
+    tmp_path, monkeypatch,
+):
+    """The bank's frozen-hash check must run before any browser is opened or
+    any live URL is hit -- a doomed run (question_sha256 mismatch) must not
+    pay the cost, or the risk, of a headed browser session first.
+    """
+    from atlas_eval.dataset import compute_question_sha256, load_bank
+
+    bank_path = tmp_path / "v3.yaml"
+    bank_path.write_text(BANK)
+    digest = compute_question_sha256(load_bank(bank_path))
+    bank_path.write_text(
+        BANK.replace("version: v3",
+                     f"version: v3\nfrozen_on: 2026-08-03\nquestion_sha256: {digest}")
+    )
+    # Edit the question text after freezing, so the recorded hash no longer matches.
+    bank_path.write_text(bank_path.read_text().replace("Describe the ACP.",
+                                                        "Describe the ACP now."))
+
+    opened = {"n": 0}
+
+    class _CountingChromium:
+        def launch_persistent_context(self, *args, **kwargs):
+            opened["n"] += 1
+            return _FakePersistentContext(_OkPage())
+
+    class _CountingPlaywright:
+        chromium = _CountingChromium()
+
+    class _CountingCM:
+        def __enter__(self):
+            return _CountingPlaywright()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: _CountingCM())
+
+    profile = tmp_path / "profile"
+    profile.mkdir()
+
+    code = main(["run", "--bank", str(bank_path), "--transport", "playwright",
+                 "--url", "https://example.com/agent", "--profile-dir", str(profile),
+                 "--runs", str(tmp_path / "runs"), "--no-snapshot"])
+
+    assert code == 2
+    assert opened["n"] == 0, "a doomed run must not open a browser at all"
+
+
 def test_playwright_transport_requires_a_url(tmp_path, capsys):
     code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "playwright",
                  "--runs", str(tmp_path / "runs"), "--no-snapshot"])

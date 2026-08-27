@@ -101,14 +101,18 @@ def _validate_responses(
     return clean, problems
 
 
-def run_bank(
-    bank_path: Path,
-    backend,
-    runs_dir: Path,
-    scored_by: str = "harness-deterministic",
-    harness_git_sha: str | None = None,
-    now: datetime | None = None,
-) -> Path:
+def load_and_check_bank(bank_path: Path):
+    """Load a bank and refuse it before anything else happens, if it is frozen
+    and its questions have since changed.
+
+    Split out of run_bank so a caller that is about to do something
+    irreversible or costly first -- opening a headed browser, hitting a live
+    URL -- can run this exact check before doing that, rather than finding
+    out only after run_bank gets around to it. Returns the loaded Bank so a
+    caller like the CLI's playwright path doesn't have to load it a second
+    time by hand; run_bank still calls this itself so every caller, not just
+    ones that remembered to check first, is protected.
+    """
     bank = load_bank(bank_path)
 
     # Refuse before asking anything: a frozen bank whose questions changed would
@@ -126,6 +130,19 @@ def run_bank(
                 "question's id or text changed; bump the bank version instead of "
                 "running against it."
             )
+    return bank
+
+
+def run_bank(
+    bank_path: Path,
+    backend,
+    runs_dir: Path,
+    scored_by: str = "harness-deterministic",
+    harness_git_sha: str | None = None,
+    now: datetime | None = None,
+) -> Path:
+    bank = load_and_check_bank(bank_path)
+    actual = compute_question_sha256(bank)
 
     questions = resolve_run_order(bank)
     started = now or datetime.now()

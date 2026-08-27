@@ -260,6 +260,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
             return 2
         return _report_run(run_dir)
 
+    from atlas_eval.orchestrate import load_and_check_bank
+
+    # Load and hash-check the bank before opening anything: a doomed run
+    # (frozen bank, changed questions) must not pay for a headed browser and
+    # a live URL first. run_bank() repeats this same check internally so
+    # every caller is protected, not just this one that remembered to check
+    # early -- see load_and_check_bank's docstring.
+    try:
+        load_and_check_bank(bank_path)
+    except OrchestrationError as err:
+        print(f"error: {err}")
+        return 2
+
     from playwright.sync_api import sync_playwright
 
     from atlas_eval.adapters.quick_playwright import QuickPlaywrightBackend
