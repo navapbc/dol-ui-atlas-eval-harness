@@ -369,3 +369,33 @@ def test_pass_count_matches_scores_csv_deterministic_pass_column(tmp_path, capsy
 
     assert actual_passes != len(score_rows), "fixture must not make pass count equal row count"
     assert f"deterministic_pass: {actual_passes}/{len(score_rows)}" in out
+
+
+def test_profile_flag_is_threaded_to_the_snapshot(tmp_path, monkeypatch):
+    """--profile must reach capture(), or a run silently uses the wrong creds."""
+    seen = {}
+
+    def fake_capture(account_id, agent_id=None, agent_name=None, profile=None, **kw):
+        seen.update(account_id=account_id, profile=profile, agent_name=agent_name)
+        return {"agent": {"AgentId": "093ac4e3"}}
+
+    import atlas_eval.snapshot as snap
+    monkeypatch.setattr(snap, "capture", fake_capture)
+
+    transcript = tmp_path / "pasted.md"
+    from atlas_eval.adapters.quick_paste import _marker_line
+    transcript.write_text(f"{_marker_line('v3-Q1')}\nThe ACP.\n")
+
+    code = main(["run", "--bank", str(_bank(tmp_path)), "--transport", "paste",
+                 "--transcript", str(transcript), "--runs", str(tmp_path / "runs"),
+                 "--account-id", "000000000000", "--profile", "dev",
+                 "--agent-name", "Engineering Onboarding Specialist"])
+    assert code == 0, seen
+    assert seen["profile"] == "dev"
+    assert seen["account_id"] == "000000000000"
+
+
+def test_run_help_mentions_the_profile_flag(capsys):
+    with pytest.raises(SystemExit):
+        main(["run", "--help"])
+    assert "--profile" in capsys.readouterr().out

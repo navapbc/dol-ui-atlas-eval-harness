@@ -307,3 +307,95 @@ def test_no_real_account_id_or_operator_email_committed_in_source():
         text = (pathlib.Path(__file__).parent.parent / rel_path).read_text()
         for needle in real_needles:
             assert needle not in text, f"{rel_path} still contains a real committed value"
+
+
+# --- AWS profile support -------------------------------------------------
+
+
+def test_default_runner_passes_the_profile_when_given():
+    calls = []
+
+    def fake_subprocess_run(argv, **kwargs):
+        calls.append(argv)
+        class R:
+            returncode = 0
+            stdout = "{}"
+            stderr = ""
+        return R()
+
+    import atlas_eval.snapshot as mod
+    original = mod.subprocess.run
+    mod.subprocess.run = fake_subprocess_run
+    try:
+        mod.default_aws_runner(["quicksight", "list-agents", "--aws-account-id", "1"],
+                               profile="dev")
+    finally:
+        mod.subprocess.run = original
+
+    assert calls, "subprocess.run was never called"
+    argv = calls[0]
+    assert "--profile" in argv and argv[argv.index("--profile") + 1] == "dev"
+    # The profile must not displace the operation, or the read-only guard
+    # would be validating the wrong element.
+    assert "list-agents" in argv
+
+
+def test_default_runner_omits_the_profile_when_not_given():
+    calls = []
+
+    def fake_subprocess_run(argv, **kwargs):
+        calls.append(argv)
+        class R:
+            returncode = 0
+            stdout = "{}"
+            stderr = ""
+        return R()
+
+    import atlas_eval.snapshot as mod
+    original = mod.subprocess.run
+    mod.subprocess.run = fake_subprocess_run
+    try:
+        mod.default_aws_runner(["quicksight", "list-agents", "--aws-account-id", "1"])
+    finally:
+        mod.subprocess.run = original
+
+    assert "--profile" not in calls[0]
+
+
+def test_profile_does_not_defeat_the_read_only_guard():
+    # A profile value that happens to name a mutating operation must not sneak
+    # one past the guard, and a genuinely mutating op must still be refused
+    # even when a profile is supplied.
+    import atlas_eval.snapshot as mod
+    with pytest.raises(SnapshotError) as exc:
+        mod.default_aws_runner(["quicksight", "update-agent", "--aws-account-id", "1"],
+                               profile="dev")
+    assert "update-agent" in str(exc.value)
+
+
+def test_capture_threads_the_profile_through_to_the_runner():
+    seen = []
+
+    def runner(args, profile=None):
+        seen.append(profile)
+        for key, payload in (("list-agents", AGENTS), ("describe-agent", AGENT),
+                             ("list-spaces", SPACES)):
+            if key in args:
+                return json.dumps(payload)
+        raise AssertionError(args)
+
+    capture("000000000000", agent_id="093ac4e3", runner=runner, profile="dev")
+    assert seen == ["dev", "dev", "dev"], "every call must use the same profile"
+
+
+def test_capture_works_with_a_runner_that_takes_no_profile():
+    # Existing tests inject single-argument runners; that must keep working.
+    def runner(args):
+        for key, payload in (("list-agents", AGENTS), ("describe-agent", AGENT),
+                             ("list-spaces", SPACES)):
+            if key in args:
+                return json.dumps(payload)
+        raise AssertionError(args)
+
+    snap = capture("000000000000", agent_id="093ac4e3", runner=runner)
+    assert snap["agent"]["Name"]

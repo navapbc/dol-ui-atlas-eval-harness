@@ -252,7 +252,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
             return 2
         try:
             snapshot_data = capture(args.account_id, agent_id=args.agent_id,
-                                    agent_name=args.agent_name)
+                                    agent_name=args.agent_name,
+                                    profile=args.profile)
         except SnapshotError as err:
             print(f"error: snapshot failed: {err}")
             return 2
@@ -394,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--url", help="Quick chat URL (playwright transport)")
     p_run.add_argument("--profile-dir", default=".auth/quick-profile")
     p_run.add_argument("--account-id", help="AWS account id, for the config snapshot")
+    p_run.add_argument("--profile", help="named AWS CLI profile for the config snapshot")
     p_run.add_argument("--agent-id")
     p_run.add_argument("--agent-name")
     p_run.add_argument("--no-snapshot", action="store_true",

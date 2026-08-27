@@ -56,12 +56,20 @@ def _validate_read_only(args: list[str]) -> None:
         raise SnapshotError(f"expected exactly one read-only operation in {args}")
 
 
-def default_aws_runner(args: list[str]) -> str:
-    """Run `aws <args>` and return stdout. Read-only calls only."""
+def default_aws_runner(args: list[str], profile: str | None = None) -> str:
+    """Run `aws <args>` and return stdout. Read-only calls only.
+
+    profile selects a named AWS CLI profile. It is appended AFTER the
+    operation rather than prepended, so it can never displace the element the
+    read-only guard inspects -- and the guard is validated before the profile
+    is added at all.
+    """
     _validate_read_only(args)
+    argv = ["aws", *args, "--output", "json"]
+    if profile:
+        argv += ["--profile", profile]
     completed = subprocess.run(
-        ["aws", *args, "--output", "json"],
-        capture_output=True, text=True, check=False,
+        argv, capture_output=True, text=True, check=False,
     )
     if completed.returncode != 0:
         raise SnapshotError(
@@ -71,13 +79,32 @@ def default_aws_runner(args: list[str]) -> str:
     return completed.stdout
 
 
-def _call(runner, args: list[str]) -> dict:
+def _invoke(runner, args: list[str], profile: str | None):
+    """Call a runner, passing profile only if it accepts one.
+
+    Tests inject single-argument runners, and a caller's runner has no reason
+    to know about profiles unless it shells out to the AWS CLI.
+    """
+    if profile is None:
+        return runner(args)
+    try:
+        return runner(args, profile=profile)
+    except TypeError:
+        # Runner does not accept a profile; the caller supplied one that
+        # cannot be honoured, which is worth saying rather than ignoring.
+        raise SnapshotError(
+            f"a profile ({profile!r}) was supplied but the runner does not "
+            "accept one"
+        ) from None
+
+
+def _call(runner, args: list[str], profile: str | None = None) -> dict:
     # Enforced here too (not just in default_aws_runner) so the guard holds
     # no matter which runner capture() is given - a test fake or any other
     # injected runner cannot skip it.
     _validate_read_only(args)
     try:
-        raw = runner(args)
+        raw = _invoke(runner, args, profile)
     except SnapshotError:
         raise
     except Exception as err:  # OSError, subprocess problems, injected fakes
@@ -200,6 +227,7 @@ def capture(
     agent_id: str | None = None,
     runner=default_aws_runner,
     agent_name: str | None = None,
+    profile: str | None = None,
 ) -> dict:
     """Snapshot the agent and its linked spaces.
 
@@ -211,7 +239,8 @@ def capture(
         # between every character of every string in the snapshot -- refuse
         # up front rather than silently produce a mangled snapshot.
         raise SnapshotError("account_id must not be empty")
-    agents = _call(runner, ["quicksight", "list-agents", "--aws-account-id", account_id])
+    agents = _call(runner, ["quicksight", "list-agents", "--aws-account-id", account_id],
+                   profile)
 
     if agent_id is None:
         if not agent_name:
@@ -228,8 +257,9 @@ def capture(
         agent_id = matches[0]["AgentId"]
 
     agent = _call(runner, ["quicksight", "describe-agent", "--aws-account-id",
-                           account_id, "--agent-id", agent_id])
-    spaces = _call(runner, ["quicksight", "list-spaces", "--aws-account-id", account_id])
+                           account_id, "--agent-id", agent_id], profile)
+    spaces = _call(runner, ["quicksight", "list-spaces", "--aws-account-id", account_id],
+                    profile)
 
     snapshot = {
         "captured_with": "aws quicksight (read-only)",
