@@ -5,7 +5,7 @@ import pytest
 
 from atlas_eval.snapshot import MUTATING_OPS, SnapshotError, capture, default_aws_runner
 
-AGENTS = {"AgentSummaryList": [
+AGENTS = {"AgentSummaries": [
     {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
      "Name": "Engineering Onboarding Specialist"},
     {"AgentId": "aaaaaaaa-0000-0000-0000-000000000000", "Name": "Other Agent"},
@@ -16,7 +16,7 @@ AGENT = {"Agent": {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
                        "CustomInstructions": "you are an onboarding specialist",
                        "ModelProfileId": "c394c917-e855-4485-ba79-f96d9461d551",
                    }}}
-SPACES = {"SpaceSummaryList": [{"SpaceId": "s1", "Name": "quick_space_ca7_daily_s3"}]}
+SPACES = {"SpaceSummaries": [{"SpaceId": "s1", "Name": "quick_space_ca7_daily_s3"}]}
 
 
 def _runner(calls, responses):
@@ -130,12 +130,12 @@ LEAKY_AGENT = {"Agent": {
     },
     "CreatedAt": "2026-06-10T18:19:25.328000-04:00",
 }}
-LEAKY_AGENTS = {"AgentSummaryList": [
+LEAKY_AGENTS = {"AgentSummaries": [
     {"AgentId": "093ac4e3-0712-481e-af95-9ddc5e4fc734",
      "Name": "Engineering Onboarding Specialist",
      "Arn": f"arn:aws:iam::{REAL_ACCOUNT_ID}:user/jsmith"},
 ]}
-LEAKY_SPACES = {"SpaceSummaryList": [
+LEAKY_SPACES = {"SpaceSummaries": [
     {"SpaceId": "s1", "Name": "quick_space_ca7_daily_s3",
      "createdBy": "AWSReservedSSO_AWSAdministratorAccess_x/jsmith@example.invalid",
      "createdByArn": f"arn:aws:quicksight:us-east-1:{REAL_ACCOUNT_ID}:user/default/jsmith",
@@ -399,3 +399,36 @@ def test_capture_works_with_a_runner_that_takes_no_profile():
 
     snap = capture("000000000000", agent_id="093ac4e3", runner=runner)
     assert snap["agent"]["Name"]
+
+
+def test_real_aws_response_keys_are_read():
+    """Regression: the code and its tests both used an invented AgentSummaryList,
+    so 346 tests passed while a real run reported 'available: (none)'.
+
+    These are the actual keys from live `aws quicksight list-agents` and from
+    the 28 migrated list-spaces payloads.
+    """
+    from atlas_eval.snapshot import _agent_summaries, _space_summaries
+
+    live_agents = {
+        "RequestId": "3355da5b",
+        "AgentSummaries": [
+            {"AgentId": "SYSTEM", "Name": "My Assistant"},
+            {"AgentId": "093ac4e3", "Name": "Engineering Onboarding Specialist"},
+            {"AgentId": "30b0228b", "Name": "Engineering Onboarding Specialist (v2)"},
+        ],
+    }
+    assert [a["Name"] for a in _agent_summaries(live_agents)] == [
+        "My Assistant",
+        "Engineering Onboarding Specialist",
+        "Engineering Onboarding Specialist (v2)",
+    ]
+    assert len(_space_summaries({"SpaceSummaries": [{}, {}]})) == 2
+
+    # Tolerated alternatives, so a rename cannot silently empty the list again.
+    assert _agent_summaries({"AgentSummaryList": [{"Name": "x"}]})[0]["Name"] == "x"
+    assert _agent_summaries({"Agents": [{"Name": "y"}]})[0]["Name"] == "y"
+
+    # An unrecognised shape yields empty rather than raising -- but capture()
+    # then reports "available: (none)", which is the symptom to recognise.
+    assert _agent_summaries({"RequestId": "only"}) == []

@@ -197,6 +197,35 @@ def _project_agent(agent: dict) -> dict:
     return {k: v for k, v in projected.items() if v is not None}
 
 
+def _agent_summaries(payload: dict) -> list[dict]:
+    """The list of agents from a list-agents response.
+
+    Live `aws quicksight list-agents` returns `AgentSummaries`. The other
+    spellings are accepted so a key rename does not silently yield an empty
+    list, which is how this was originally wrong: the code and its tests both
+    used an invented `AgentSummaryList`, so the tests passed while a real run
+    reported "available: (none)".
+    """
+    for key in ("AgentSummaries", "AgentSummaryList", "Agents"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _space_summaries(payload: dict) -> list[dict]:
+    """The list of spaces from a list-spaces response.
+
+    The real payloads (checked against 28 migrated snapshots) use
+    `SpaceSummaries`.
+    """
+    for key in ("SpaceSummaries", "SpaceSummaryList", "Spaces"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
 def _project_agent_summary(summary: dict) -> dict:
     """Project a list-agents summary: just enough to tell which agents existed."""
     projected = {"AgentId": summary.get("AgentId"), "Name": summary.get("Name")}
@@ -245,11 +274,11 @@ def capture(
     if agent_id is None:
         if not agent_name:
             raise SnapshotError("one of agent_id or agent_name is required")
-        matches = [a for a in agents.get("AgentSummaryList", [])
+        matches = [a for a in _agent_summaries(agents)
                    if a.get("Name") == agent_name]
         if not matches:
             available = ", ".join(sorted(
-                a.get("Name", "?") for a in agents.get("AgentSummaryList", [])
+                a.get("Name", "?") for a in _agent_summaries(agents)
             ))
             raise SnapshotError(
                 f"no agent named {agent_name!r}; available: {available or '(none)'}"
@@ -265,8 +294,8 @@ def capture(
         "captured_with": "aws quicksight (read-only)",
         "operations": list(READ_ONLY_OPS),
         "agent": _project_agent(agent.get("Agent", {})),
-        "agent_list": [_project_agent_summary(a) for a in agents.get("AgentSummaryList", [])],
-        "spaces": [_project_space(s) for s in spaces.get("SpaceSummaryList", [])],
+        "agent_list": [_project_agent_summary(a) for a in _agent_summaries(agents)],
+        "spaces": [_project_space(s) for s in _space_summaries(spaces)],
     }
     # The projection above already drops ARNs/CreatedBy/Owner/tags/etc, but
     # the scrubber still runs over what's left as defence in depth: Instructions
