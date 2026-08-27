@@ -128,6 +128,15 @@ def test_citation_labels(page):
     assert labels and all(l.startswith("Citation") for l in labels)
 
 
+def test_citation_labels_scoped_to_one_turn_excludes_the_others(page):
+    # The fixture holds 2 turns, each with its own 2 citations. Scoping to a
+    # single turn's locator must return only that turn's count, not the
+    # whole page's (2, not 4) -- the bug this scoping fixes read page-wide.
+    per_turn = qd.citation_labels(page.locator(qd.SEL_AI_TURN).nth(0))
+    assert len(per_turn) == 2
+    assert len(qd.citation_labels(page)) == 2 * len(per_turn)
+
+
 def test_auth_redirect_detection():
     assert qd.is_auth_redirect(
         "https://us-east-1.quicksight.aws.amazon.com/sn/account/njuimod/start/home"

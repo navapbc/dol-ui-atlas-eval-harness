@@ -94,10 +94,20 @@ def question_texts(page) -> list[str]:
     return [t.strip() for t in page.locator(SEL_USER_TURN).all_inner_texts()]
 
 
-def citation_labels(page) -> list[str]:
+def citation_labels(scope) -> list[str]:
+    """Citation labels found within `scope`.
+
+    `scope` is whatever the caller passes: the whole `page` (every citation
+    on it) or, critically, one specific turn's own locator -- e.g.
+    `page.locator(SEL_AI_TURN).nth(i)` -- so that answer N's citations are
+    only ever the citations rendered inside answer N's own turn, never
+    turns 1..N-1's as well. Callers reading one answer's citations must pass
+    a turn-scoped locator, not the page.
+    """
     labels = []
-    for i in range(page.locator(SEL_CITATION).count()):
-        label = page.locator(SEL_CITATION).nth(i).get_attribute("aria-label")
+    citations = scope.locator(SEL_CITATION)
+    for i in range(citations.count()):
+        label = citations.nth(i).get_attribute("aria-label")
         if label:
             labels.append(label.strip())
     return labels

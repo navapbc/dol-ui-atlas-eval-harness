@@ -217,11 +217,13 @@ class QuickPlaywrightBackend:
                         "(a stray turn or footer, such as an error bubble or a quick-"
                         "starter chip, would shift every later pairing without this check)",
                     )
+                turn_position = baseline_turns + index - 1
+                own_turn = page.locator(qd.SEL_AI_TURN).nth(turn_position)
                 responses.append(Response(
                     question_id=question.id,
-                    answer=answers[baseline_turns + index - 1],
+                    answer=answers[turn_position],
                     asked_at=datetime.now(),
-                    citations=qd.citation_labels(page),
+                    citations=qd.citation_labels(own_turn),
                 ))
 
                 if index == 1:

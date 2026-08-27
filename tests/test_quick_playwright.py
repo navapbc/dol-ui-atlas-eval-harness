@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from atlas_eval.adapters import quick_dom as qd
 from atlas_eval.adapters.base import TransportError
 from atlas_eval.adapters.quick_playwright import (
     QuickPlaywrightBackend, submit_question, wait_for_answer,
@@ -16,14 +17,33 @@ def _q(qid, text="question text", after=None):
 
 
 class FakeLocator:
-    def __init__(self, page, selector):
-        self._page, self._sel = page, selector
+    """Minimal stand-in for a Playwright Locator.
+
+    `nth()` returning `self` unconditionally (the pre-fix shape) makes every
+    element indistinguishable from every other: a test can assert that
+    SOMETHING was read, but never that the RIGHT element was read, which is
+    exactly why the citation-bleed bug (every answer got every citation on
+    the whole page) went uncaught. Turns (SEL_AI_TURN) and citations
+    (SEL_CITATION) are the two selectors this suite needs to tell apart by
+    index, so `nth()` on those tracks a real index instead of collapsing
+    back to the same object; `.locator()` lets a turn-scoped locator narrow
+    further to just that turn's own citations, mirroring how the real
+    Playwright API scopes a query to inside another locator's element.
+    """
+
+    def __init__(self, page, selector, turn_index=None, citation_index=None):
+        self._page = page
+        self._sel = selector
+        self._turn_index = turn_index
+        self._citation_index = citation_index
 
     @property
     def first(self):
         return self
 
     def count(self):
+        if self._sel == qd.SEL_CITATION and self._turn_index is not None:
+            return len(self._page.citations_by_turn.get(self._turn_index, []))
         return self._page.counts.get(self._sel, 0)
 
     def fill(self, text):
@@ -34,6 +54,10 @@ class FakeLocator:
         self._page.on_submit()
 
     def get_attribute(self, name):
+        if (self._sel == qd.SEL_CITATION and self._turn_index is not None
+                and self._citation_index is not None):
+            labels = self._page.citations_by_turn.get(self._turn_index, [])
+            return labels[self._citation_index] if self._citation_index < len(labels) else None
         return self._page.attrs.get((self._sel, name))
 
     def inner_text(self):
@@ -43,7 +67,19 @@ class FakeLocator:
         return self._page.lists.get(self._sel, [])
 
     def nth(self, i):
+        if self._sel == qd.SEL_AI_TURN:
+            return FakeLocator(self._page, self._sel, turn_index=i)
+        if self._sel == qd.SEL_CITATION and self._turn_index is not None:
+            return FakeLocator(self._page, self._sel, turn_index=self._turn_index,
+                               citation_index=i)
         return self
+
+    def locator(self, selector):
+        # Scoped to inside a specific turn: return citations for that turn
+        # only, never the whole page's.
+        if self._sel == qd.SEL_AI_TURN and self._turn_index is not None:
+            return FakeLocator(self._page, selector, turn_index=self._turn_index)
+        return self._page.locator(selector)
 
 
 class FakePage:
@@ -53,6 +89,7 @@ class FakePage:
         self.url = url
         self.counts, self.attrs, self.texts, self.lists = {}, {}, {}, {}
         self.filled, self.pressed = [], []
+        self.citations_by_turn: dict[int, list[str]] = {}
         self.on_submit = lambda: None
 
     def locator(self, selector):
@@ -237,6 +274,25 @@ def test_ask_aborts_when_turns_and_footers_fall_out_of_lockstep():
     assert "PARSE_FAILED" in result.failure
     assert "2 new agent turns" in result.failure
     assert "1 new completed-answer footers" in result.failure
+
+
+def test_ask_scopes_citations_to_each_answers_own_turn_not_the_whole_page():
+    """Reproduces the finding: citation_labels(page) read every citation on
+    the whole page, so answer 2 inherited answer 1's citation(s) too.
+    Each turn here carries a DISTINCT, disjoint set of citation labels, so a
+    regression that reads page-wide (or that reads the wrong turn) is caught
+    -- a bug that merely duplicated shared labels across turns would not be.
+    """
+    page = _wired_page(2)
+    page.citations_by_turn = {0: ["Citation A1"], 1: ["Citation B1", "Citation B2"]}
+
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+
+    assert result.complete is True, result.failure
+    assert result.responses[0].citations == ["Citation A1"]
+    assert result.responses[1].citations == ["Citation B1", "Citation B2"]
 
 
 def test_ask_walks_the_bank_in_order_and_pairs_answers():
