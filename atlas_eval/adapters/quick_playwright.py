@@ -17,6 +17,7 @@ aborts the run.
 from __future__ import annotations
 
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -77,6 +78,18 @@ def wait_for_answer(
         waited += poll_ms
 
 
+def _normalize_agent_name(name: str) -> str:
+    """Fold a bank slug and a UI display name onto the same shape.
+
+    The bank's `agent` field is a slug (`engineering_onboarding_specialist`);
+    the completion banner shows a display name (`Engineering Onboarding
+    Specialist`). Case, and underscore-vs-space, are the only differences
+    between those two forms for a legitimate match, so both are collapsed
+    away before comparing.
+    """
+    return " ".join(name.replace("_", " ").split()).lower()
+
+
 def submit_question(page, text: str) -> None:
     _guard_auth(page)
     box = page.locator(qd.SEL_INPUT)
@@ -112,6 +125,40 @@ class QuickPlaywrightBackend:
 
     def snapshot(self) -> dict:
         return self._snapshot
+
+    def _check_agent(self, page) -> None:
+        """Confirm the completion banner named the agent under test.
+
+        Called once, right after the first answer completes: the banner only
+        renders once a message has been answered, and checking here aborts
+        before the rest of the bank is wasted on a run that can never be
+        scored correctly. Quick opens with a default agent already active,
+        has no per-agent URL, and never puts the agent id in the DOM, so this
+        banner text is the only in-page confirmation of which agent answered.
+        """
+        if not self.agent:
+            return  # no expected agent to check against (args.agent_name or "")
+        observed = qd.agent_from_status(page)
+        if observed is None:
+            # The banner is a UI affordance, not guaranteed on every page. Its
+            # absence must not fail the run closed, but it must not be silent
+            # either: a warning surfaces in test output and in any run of the
+            # CLI (Python prints warnings to stderr by default), without
+            # touching AskResult / the run record.
+            warnings.warn(
+                "no completion banner found on the page; could not confirm "
+                f"that {self.agent!r} was the agent that answered. Proceeding "
+                "without agent-identity confirmation for this run.",
+                stacklevel=2,
+            )
+            return
+        if _normalize_agent_name(observed) != _normalize_agent_name(self.agent):
+            raise TransportError(
+                "AGENT_MISMATCH",
+                f"expected agent {self.agent!r} to answer but the completion "
+                f"banner named {observed!r}; the run may have executed "
+                "against the wrong agent and must not be scored",
+            )
 
     def ask(self, questions: list[Question]) -> AskResult:
         page = self._page
@@ -176,6 +223,16 @@ class QuickPlaywrightBackend:
                     asked_at=datetime.now(),
                     citations=qd.citation_labels(page),
                 ))
+
+                if index == 1:
+                    # Only the first answer triggers the banner check: it
+                    # cannot be checked any earlier (no banner exists until an
+                    # answer has completed), and checking here aborts before
+                    # the remaining questions in the bank are wasted on a run
+                    # against the wrong agent. The first answer is already
+                    # appended above, so an abort here still keeps it in the
+                    # partial result.
+                    self._check_agent(page)
         except TransportError as err:
             return AskResult(
                 responses=responses, conversation_id=conversation,

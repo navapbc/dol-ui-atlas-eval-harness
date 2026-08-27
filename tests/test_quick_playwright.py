@@ -193,7 +193,10 @@ def test_ask_returns_new_answers_not_stale_ones_when_the_thread_has_prior_turns(
 
     monkeypatch.setattr(qp.time, "sleep", fake_sleep)
 
-    backend = qp.QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+    # Agent matches the wired page's status banner ("Engineering Onboarding
+    # Specialist"); this test is about baselining, not agent matching.
+    backend = qp.QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                        url="https://q", snapshot_data={}, page=page)
     result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
 
     assert result.complete is True, result.failure
@@ -208,7 +211,8 @@ def test_ask_returns_new_answers_not_stale_ones_when_the_thread_has_prior_turns(
 
 def test_ask_with_a_single_prior_answer_returns_the_new_one():
     page = _wired_page_with_baseline(baseline=1)
-    backend = QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
     result = backend.ask([_q("v3-Q1")])
     assert result.complete is True, result.failure
     assert result.responses[0].answer == "new answer 1"
@@ -261,7 +265,8 @@ def test_ask_marks_incomplete_on_a_transport_error_and_keeps_prior_answers():
         original()
     page.on_submit = flaky
 
-    backend = QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
     result = backend.ask([_q("v3-Q1"), _q("v3-Q2")])
     assert result.complete is False
     assert "AUTH_REQUIRED" in result.failure
@@ -296,6 +301,65 @@ def test_ask_refuses_before_asking_when_already_on_an_auth_redirect():
     assert "AUTH_REQUIRED" in result.failure
     assert result.responses == []
     assert page.filled == [], "must not type into a login page"
+
+
+def test_ask_does_not_abort_when_the_banner_names_the_expected_agent_as_a_display_name():
+    """Bank slug vs. UI display name: engineering_onboarding_specialist should
+    match "Engineering Onboarding Specialist" without tripping the check."""
+    page = _wired_page(2)  # SEL_STATUS already carries the display-name banner
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+    assert result.complete is True, result.failure
+    assert len(result.responses) == 2
+
+
+def test_ask_aborts_after_the_first_question_when_the_banner_names_a_different_agent():
+    from atlas_eval.adapters import quick_dom as qd
+    page = _wired_page(2)
+    page.lists[qd.SEL_STATUS] = ["New message from Some Other Agent"]
+
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+
+    assert result.complete is False
+    assert "AGENT_MISMATCH" in result.failure
+    assert "engineering_onboarding_specialist" in result.failure
+    assert "Some Other Agent" in result.failure
+    # aborted after Q1, not before it: the first (real) answer is retained.
+    assert [r.question_id for r in result.responses] == ["v3-Q1"]
+    assert result.responses[0].answer == "answer 1"
+
+
+def test_ask_does_not_abort_when_no_completion_banner_is_present(recwarn):
+    from atlas_eval.adapters import quick_dom as qd
+    page = _wired_page(2)
+    page.lists[qd.SEL_STATUS] = []  # no banner rendered at all
+
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+
+    assert result.complete is True, result.failure
+    assert len(result.responses) == 2
+    assert any("banner" in str(w.message).lower() for w in recwarn.list), (
+        "a missing banner must not fail closed, but its absence must be "
+        "surfaced (e.g. via a warning), not silent"
+    )
+
+
+def test_ask_skips_the_agent_check_when_no_agent_is_expected():
+    from atlas_eval.adapters import quick_dom as qd
+    page = _wired_page(2)
+    page.lists[qd.SEL_STATUS] = ["New message from Some Other Agent"]
+
+    # Mirrors the CLI passing `args.agent_name or ""` when nothing was given.
+    backend = QuickPlaywrightBackend(agent="", url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+
+    assert result.complete is True, result.failure
+    assert len(result.responses) == 2
 
 
 def test_backend_conforms_to_the_backend_protocol():

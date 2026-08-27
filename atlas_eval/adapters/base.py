@@ -50,6 +50,12 @@ class TransportError(Exception):
         "TIMEOUT",
         "CONVERSATION_LOST",
         "PARSE_FAILED",
+        # Distinct from CONVERSATION_LOST: the thread never changed, but the
+        # completion banner named an agent other than the one under test. Quick
+        # opens with a default agent already active and has no per-agent URL
+        # and no agent id in the DOM, so this is the only way a wrong-agent run
+        # is ever detected instead of silently scored as if it were correct.
+        "AGENT_MISMATCH",
     )
 
     def __init__(self, code: str, detail: str) -> None:
