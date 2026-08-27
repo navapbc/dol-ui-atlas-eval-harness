@@ -7,8 +7,13 @@ Captured with `tools/recon_quick_dom.py`. Fixture: `tests/fixtures/quick/convers
 ## How to run it
 
 ```bash
-.venv/bin/python tools/recon_quick_dom.py --url "<quick chat agent URL>"
+.venv/bin/python tools/recon_quick_dom.py \
+  --url "https://us-east-1.quicksight.aws.amazon.com/sn/account/njuimod/start/agents"
 ```
+
+Quick exposes no per-agent URL — that landing page is the entry point and you
+navigate to the agent from there. The script therefore prompts three times: at the
+agents list, after you open the agent, and after the last answer finishes.
 
 A headed Chromium opens. You sign in yourself — the script never touches
 credentials and never types into a password field. It prompts twice: once after
@@ -32,6 +37,24 @@ grep -oE 'arn:aws[^" ]{0,120}' conversation_complete.html | sort -u | head
 No token, JWT, or SSN matches may remain. Mask account ids inside ARNs. If the page
 cannot be scrubbed with confidence, do not commit it — record the selectors in the
 table below instead and say so here.
+
+## Agent selection (no deep link exists)
+
+Because there is no per-agent URL, an automated run must click through the agents
+list. This is selector surface the design did not originally account for.
+
+| Purpose | Selector | Stable? | Notes |
+|---|---|---|---|
+| Agents list container | | | |
+| One agent entry | | | |
+| Entry for "Engineering Onboarding Specialist" | | | |
+
+- URL at the agents list:
+- URL after opening the agent (if it differs, a deep link may exist after all):
+- Is the agent addressable by its id (`093ac4e3-0712-481e-af95-9ddc5e4fc734`) anywhere in the DOM?
+
+Note this affects the UI transport ONLY. `snapshot()` reads agent and space config
+through the read-only `aws quicksight` control-plane calls, which are unaffected.
 
 ## Selectors
 

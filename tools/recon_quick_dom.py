@@ -8,6 +8,7 @@ drive the conversation, then dumps the DOM and a candidate-selector report.
     .venv/bin/python tools/recon_quick_dom.py --url <quick-chat-url>
 
 Deliverables it writes into tests/fixtures/quick/:
+    <name>.agents_list.json/html    the agent-selection page (no per-agent URL exists)
     <name>.selectors_before.json   control inventory while idle
     <name>.selectors_after.json    control inventory once an answer finished
     <name>.html                     full DOM of the finished conversation
@@ -83,18 +84,38 @@ def main() -> int:
         page.goto(args.url)
 
         print("\n" + "=" * 70)
-        print("STEP 1 — sign in")
+        print("STEP 1 — sign in, and STOP at the agents list")
         print("=" * 70)
-        print("Log in via Identity Center in the browser window, open the agent so the")
-        print("chat input is visible, then come back here and press Enter.")
+        print("Log in via Identity Center in the browser window. Stop as soon as you can")
+        print("SEE the list of agents, WITHOUT clicking into one yet, then press Enter.")
+        print()
+        print("Why: Quick exposes no per-agent URL, so an automated run has to click")
+        print("through this list to reach the right agent. We need to know how.")
         input("> ")
+
+        agents = page.evaluate(PROBE_JS)
+        (FIXTURES / f"{args.out}.agents_list.selectors.json").write_text(
+            json.dumps(agents, indent=2)
+        )
+        (FIXTURES / f"{args.out}.agents_list.html").write_text(page.content())
+        _report("AGENTS LIST (how automation must select the agent)", agents)
+        print(f"\n  current URL: {page.url}")
+
+        print("\n" + "=" * 70)
+        print("STEP 2 — open the agent")
+        print("=" * 70)
+        print("Now click into the Engineering Onboarding Specialist so the chat input is")
+        print("visible, then press Enter.")
+        input("> ")
+        print(f"  URL after opening the agent: {page.url}")
+        print("  (if this differs from the list URL, a deep link may exist after all)")
 
         pre = page.evaluate(PROBE_JS)
         (FIXTURES / f"{args.out}.selectors_before.json").write_text(json.dumps(pre, indent=2))
         _report("IDLE (before asking anything)", pre)
 
         print("\n" + "=" * 70)
-        print("STEP 2 — ask two questions")
+        print("STEP 3 — ask two questions")
         print("=" * 70)
         print("Ask at least two questions. Make ONE of them a question whose answer runs")
         print("several paragraphs — completion detection has to be exercised against a long")
