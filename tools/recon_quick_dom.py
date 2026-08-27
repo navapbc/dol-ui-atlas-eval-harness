@@ -50,7 +50,10 @@ PROBE_JS = """
 
 
 def _key(d: dict) -> tuple:
-    return (d["tag"], d["testid"], d["label"], d["text"])
+    # Coerce to str: these attributes are frequently null, and a tuple mixing
+    # None and str is not sortable.
+    return tuple("" if d.get(k) is None else str(d[k])
+                 for k in ("tag", "testid", "label", "text"))
 
 
 def _report(label: str, probe: dict) -> None:

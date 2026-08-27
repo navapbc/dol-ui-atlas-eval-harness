@@ -9,3 +9,9 @@ venv/
 .auth/
 # Task workflow scratch directory
 .superpowers/
+
+# Raw Quick captures: contain AWS account ids, federated-identity ARNs and the
+# operator's email. Keep locally for analysis; commit only sanitized fixtures.
+tests/fixtures/quick/*.html
+tests/fixtures/quick/*.selectors*.json
+!tests/fixtures/quick/sanitized_*.html
