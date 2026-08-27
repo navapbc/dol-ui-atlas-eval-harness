@@ -100,3 +100,42 @@ contain) rather than trying to nest a second OR group.
     python -m pytest -q
 
 Both run without AWS credentials or network access.
+
+## Running a bank
+
+Two transports. Both produce an identical run record.
+
+**Paste** — you drive Quick, the harness parses. No UI risk; use it when the
+result matters more than the automation:
+
+    atlas-eval run --bank data/banks/v3.yaml --transport paste \
+      --transcript my_pasted_answers.md --account-id <id> --agent-name "Engineering Onboarding Specialist"
+
+Generate the sheet to fill in with:
+
+    atlas-eval run --bank data/banks/v3.yaml --transport paste --print-sheet
+
+Each question in the sheet gets an `<!-- atlas:answer <question-id> -->` marker
+(an HTML comment, invisible when rendered). Paste the answer between its marker
+and the next one, replacing the placeholder text; leave the markers themselves
+alone. This is an HTML comment rather than a markdown heading on purpose: a
+real Quick answer routinely contains its own subheadings and dozens of fenced
+code blocks, and a heading delimiter collides with that content and silently
+corrupts the parse. A `conversation: <id>` line is read wherever it appears in
+the pasted document, not only at the end where the sheet places it.
+
+If you return the sheet with a placeholder still in place, that question is
+recorded as unanswered (not as a literal answer of placeholder text) and the
+run is reported incomplete.
+
+**Playwright** — drives the UI. Sign in once, then reuse the profile:
+
+    .venv/bin/python tools/open_quick_session.py --url "<quick url>"
+    atlas-eval run --bank data/banks/v3.yaml --transport playwright \
+      --url "<quick url>" --account-id <id>
+
+The harness never submits credentials. If a run is bounced to a login page it
+aborts and marks the run `incomplete`.
+
+An incomplete run is still written to `data/runs/` for diagnosis, exits non-zero,
+and is excluded from `atlas-eval report`.

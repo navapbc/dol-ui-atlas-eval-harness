@@ -190,6 +190,98 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 1 if had_error else 0
 
 
+def _cmd_run(args: argparse.Namespace) -> int:
+    from atlas_eval.adapters.quick_paste import QuickPasteBackend
+    from atlas_eval.orchestrate import OrchestrationError, run_bank
+
+    bank_path = Path(args.bank)
+    if not bank_path.is_file():
+        print(f"error: no such bank file: {bank_path}")
+        return 2
+
+    snapshot_data: dict = {}
+    if not args.no_snapshot:
+        from atlas_eval.snapshot import SnapshotError, capture
+        if not args.account_id:
+            print("error: --account-id is required unless --no-snapshot is given")
+            return 2
+        try:
+            snapshot_data = capture(args.account_id, agent_id=args.agent_id,
+                                    agent_name=args.agent_name)
+        except SnapshotError as err:
+            print(f"error: snapshot failed: {err}")
+            return 2
+
+    if args.transport == "paste":
+        if args.print_sheet:
+            from atlas_eval.adapters.quick_paste import render_prompt_sheet
+            from atlas_eval.dataset import load_bank, resolve_run_order
+            print(render_prompt_sheet(resolve_run_order(load_bank(bank_path))))
+            return 0
+        if not args.transcript:
+            print("error: --transcript is required for the paste transport "
+                  "(or pass --print-sheet to generate the sheet to fill in)")
+            return 2
+        transcript_path = Path(args.transcript)
+        if not transcript_path.is_file():
+            print(f"error: no such transcript: {transcript_path}")
+            return 2
+        backend = QuickPasteBackend(agent=args.agent_name or "",
+                                    snapshot_data=snapshot_data,
+                                    transcript_text=transcript_path.read_text())
+    else:
+        if not args.url:
+            print("error: --url is required for the playwright transport")
+            return 2
+        from playwright.sync_api import sync_playwright
+
+        from atlas_eval.adapters.quick_playwright import QuickPlaywrightBackend
+        profile = Path(args.profile_dir)
+        if not profile.exists():
+            print(f"error: no browser profile at {profile}. Run "
+                  f"tools/open_quick_session.py first and sign in once.")
+            return 2
+        with sync_playwright() as p:
+            ctx = p.chromium.launch_persistent_context(str(profile), headless=False)
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            page.goto(args.url)
+            backend = QuickPlaywrightBackend(
+                agent=args.agent_name or "", url=args.url,
+                snapshot_data=snapshot_data, profile_dir=profile, page=page,
+            )
+            try:
+                run_dir = run_bank(bank_path, backend, Path(args.runs))
+            except OrchestrationError as err:
+                print(f"error: {err}")
+                return 2
+            finally:
+                ctx.close()
+            return _report_run(run_dir)
+
+    try:
+        run_dir = run_bank(bank_path, backend, Path(args.runs))
+    except OrchestrationError as err:
+        print(f"error: {err}")
+        return 2
+    return _report_run(run_dir)
+
+
+def _report_run(run_dir: Path) -> int:
+    from atlas_eval.runs import read_run
+
+    meta, responses, rows = read_run(run_dir)
+    passed = sum(1 for line in (run_dir / "scores.csv").read_text().splitlines()[1:]
+                 if ",True," in line)
+    print(f"{meta.run_id}: {meta.status.value}")
+    print(f"  answers: {len(responses)}   scored rows: {len(rows)}   "
+          f"deterministic passes: {passed}")
+    print(f"  written to {run_dir}")
+    if meta.status.value != "complete":
+        print("  this run is incomplete and is excluded from bank-level results")
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas-eval")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -239,6 +331,24 @@ def main(argv: list[str] | None = None) -> int:
     p_rep.add_argument("--runs", default="data/runs")
     p_rep.add_argument("--banks", default=str(DEFAULT_BANKS))
     p_rep.set_defaults(func=_cmd_report)
+
+    p_run = sub.add_parser("run", help="execute a bank against a backend")
+    p_run.add_argument("--bank", required=True)
+    p_run.add_argument("--transport", choices=("paste", "playwright"), default="paste",
+                       help="paste: you drive Quick and paste the transcript. "
+                            "playwright: drive the UI (needs a signed-in profile).")
+    p_run.add_argument("--runs", default="data/runs")
+    p_run.add_argument("--transcript", help="pasted transcript (paste transport)")
+    p_run.add_argument("--print-sheet", action="store_true",
+                       help="print the run sheet to fill in, then exit (paste transport)")
+    p_run.add_argument("--url", help="Quick chat URL (playwright transport)")
+    p_run.add_argument("--profile-dir", default=".auth/quick-profile")
+    p_run.add_argument("--account-id", help="AWS account id, for the config snapshot")
+    p_run.add_argument("--agent-id")
+    p_run.add_argument("--agent-name")
+    p_run.add_argument("--no-snapshot", action="store_true",
+                       help="skip the control-plane snapshot (offline testing)")
+    p_run.set_defaults(func=_cmd_run)
 
     args = parser.parse_args(argv)
     return args.func(args)
