@@ -235,10 +235,25 @@ class QuickPlaywrightBackend:
                     # appended above, so an abort here still keeps it in the
                     # partial result.
                     self._check_agent(page)
-        except TransportError as err:
+        except Exception as err:
+            # `except Exception`, never a bare `except:` -- KeyboardInterrupt
+            # and SystemExit are BaseException, not Exception, so they are
+            # never caught here and always propagate.
+            #
+            # TransportError is the harness's own, already-informative
+            # failure; anything else is a Playwright-native exception (most
+            # often a TimeoutError: fill() auto-waits for visible-and-enabled
+            # and can time out while a prior answer is still streaming) that
+            # would otherwise propagate out of ask() and out of run_bank,
+            # losing every answer already collected -- not just this
+            # question's -- to a bare traceback instead of a written,
+            # diagnosable incomplete run.
+            failure = str(err) if isinstance(err, TransportError) else (
+                f"{type(err).__name__}: {err}"
+            )
             return AskResult(
                 responses=responses, conversation_id=conversation,
-                complete=False, failure=str(err),
+                complete=False, failure=failure,
             )
 
         return AskResult(responses=responses, conversation_id=conversation, complete=True)

@@ -295,6 +295,51 @@ def test_ask_scopes_citations_to_each_answers_own_turn_not_the_whole_page():
     assert result.responses[1].citations == ["Citation B1", "Citation B2"]
 
 
+def test_ask_catches_a_native_playwright_exception_and_keeps_partial_answers():
+    """Reproduces the finding: ask() only caught TransportError, so a
+    Playwright-native exception (a real TimeoutError from fill()'s
+    auto-wait, routinely raised while a prior answer is still streaming)
+    propagated out of ask() and out of run_bank, losing the whole run --
+    including every answer already collected -- to a traceback instead of a
+    written, diagnosable incomplete run.
+    """
+    page = _wired_page(2)
+    original = page.on_submit
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise TimeoutError("Timeout 30000ms exceeded waiting for locator "
+                               "to be visible and enabled")
+        original()
+    page.on_submit = flaky
+
+    backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
+                                     url="https://q", snapshot_data={}, page=page)
+    result = backend.ask([_q("v3-Q1"), _q("v3-Q2", after="v3-Q1")])
+
+    assert result.complete is False
+    assert result.failure is not None and "Timeout" in result.failure
+    assert [r.question_id for r in result.responses] == ["v3-Q1"], (
+        "the answer already collected before the exception must survive in "
+        "the partial result, not be discarded along with the traceback"
+    )
+
+
+def test_ask_does_not_swallow_keyboard_interrupt_or_system_exit():
+    for exc_type in (KeyboardInterrupt, SystemExit):
+        page = _wired_page(1)
+
+        def boom():
+            raise exc_type()
+        page.on_submit = boom
+
+        backend = QuickPlaywrightBackend(agent="a", url="https://q", snapshot_data={}, page=page)
+        with pytest.raises(exc_type):
+            backend.ask([_q("v3-Q1")])
+
+
 def test_ask_walks_the_bank_in_order_and_pairs_answers():
     page = _wired_page(2)
     backend = QuickPlaywrightBackend(agent="engineering_onboarding_specialist",
