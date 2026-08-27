@@ -129,6 +129,56 @@ def _cmd_review_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rubric_export(args: argparse.Namespace) -> int:
+    from atlas_eval.rubric_entry import export_rubric
+
+    run_dir = Path(args.run)
+    if not run_dir.is_dir():
+        print(f"error: no such run directory: {run_dir}")
+        return 2
+
+    result = export_rubric(run_dir, Path(args.out), Path(args.banks))
+    print(f"exported {result.exported} question(s) to {args.out}")
+    print(
+        "\nthis CSV deliberately omits the question, ground truth, and answer. "
+        "Read them here:\n"
+        f"  transcript (question + answer + priming): {result.transcript_path}\n"
+        f"  ground truth (bank):                       {result.bank_path}"
+    )
+    return 0
+
+
+def _cmd_rubric_import(args: argparse.Namespace) -> int:
+    from atlas_eval.rubric_entry import import_rubric
+
+    run_dir = Path(args.run)
+    if not run_dir.is_dir():
+        print(f"error: no such run directory: {run_dir}")
+        return 2
+
+    report = import_rubric(
+        Path(args.file), run_dir,
+        scored_by=args.scored_by, confirmed_by=args.confirmed_by, dry_run=args.dry_run,
+    )
+
+    if not report.ok:
+        for err in report.errors:
+            print(f"error: {err}")
+        print(f"\nnothing was written ({len(report.errors)} error(s)).")
+        return 1
+
+    for c in sorted(report.changes, key=lambda c: c.question_id):
+        print(f"{c.question_id}: total {c.rubric.total}/10 (scored_by {c.rubric.scored_by})")
+    verb = "would write" if args.dry_run else "wrote"
+    print(f"\n{verb} {len(report.changes)} row(s); {report.unchanged} row(s) unchanged.")
+    if report.changes and not args.dry_run:
+        print(
+            "\nthe rolled-up data/scores.csv is now stale for this run; run "
+            "`atlas-eval rollup` and commit the result."
+        )
+    return 0
+
+
 def _cmd_rollup(args: argparse.Namespace) -> int:
     import difflib
     import tempfile
@@ -367,6 +417,23 @@ def main(argv: list[str] | None = None) -> int:
     p_imp.add_argument("--date", help="review date, YYYY-MM-DD; defaults to today")
     p_imp.add_argument("--dry-run", action="store_true")
     p_imp.set_defaults(func=_cmd_review_import)
+
+    p_rubric = sub.add_parser("rubric", help="drafted rubric score round trip for one run")
+    rubric_sub = p_rubric.add_subparsers(dest="rubric_command", required=True)
+
+    p_rubric_exp = rubric_sub.add_parser("export", help="write the rubric entry CSV for a run")
+    p_rubric_exp.add_argument("--run", required=True, help="a run directory")
+    p_rubric_exp.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_rubric_exp.add_argument("-o", "--out", default="rubric.csv")
+    p_rubric_exp.set_defaults(func=_cmd_rubric_export)
+
+    p_rubric_imp = rubric_sub.add_parser("import", help="write drafted rubric scores back")
+    p_rubric_imp.add_argument("file")
+    p_rubric_imp.add_argument("--run", required=True, help="a run directory")
+    p_rubric_imp.add_argument("--scored-by", help="who or what drafted these scores")
+    p_rubric_imp.add_argument("--confirmed-by", help="the human signing off on these scores")
+    p_rubric_imp.add_argument("--dry-run", action="store_true")
+    p_rubric_imp.set_defaults(func=_cmd_rubric_import)
 
     p_rollup = sub.add_parser("rollup", help="regenerate data/scores.csv from data/runs")
     p_rollup.add_argument("--runs", default="data/runs")

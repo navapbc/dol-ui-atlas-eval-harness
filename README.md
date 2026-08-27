@@ -35,6 +35,14 @@ Send a bank for SME review, then import the verdicts:
     atlas-eval review import v3_review_oscar.xlsx --dry-run
     atlas-eval review import v3_review_oscar.xlsx
 
+Draft rubric scores for a run, then import them once a human has reviewed the draft:
+
+    atlas-eval rubric export --run data/runs/2026-08-12_1704_quick_v5 -o v5_rubric.csv
+    atlas-eval rubric import v5_rubric.csv --run data/runs/2026-08-12_1704_quick_v5 \
+      --scored-by claude-opus-5 --dry-run
+    atlas-eval rubric import v5_rubric.csv --run data/runs/2026-08-12_1704_quick_v5 \
+      --scored-by claude-opus-5
+
 Report scores for every run, verified and exploratory kept separate:
 
     atlas-eval report
@@ -54,6 +62,36 @@ these against the answer key and a human reviews them, which is the existing Qui
 Audit process. Each row records `scored_by` (who or what produced the values: a model
 id or a person's name) and `confirmed_by` (the human who signed off; `None` until then),
 so a report can be restricted to human-confirmed scores.
+
+## Drafting rubric scores
+
+`atlas-eval rubric export`/`atlas-eval rubric import` are the import/export boundary
+for the rubric layer. The harness itself never calls a model — `atlas_eval/scoring.py`
+is model-free and stays that way — so drafting happens outside these two commands, in
+whatever tool an LLM is driven from.
+
+    atlas-eval rubric export --run data/runs/<run-id> -o rubric.csv
+
+writes one row per question in the run: `question_id`, `type`, `verification_status`,
+`deterministic_pass` (read-only context) and blank columns for the five dimensions plus
+`notes` and `scored_by`. It deliberately does **not** duplicate the question text, ground
+truth, or the answer into the CSV — a second copy of a multi-thousand-character answer
+would drift from the record it was copied from. Instead it prints the two paths a grader
+needs: the run's own `transcript.md` (question, answer, and priming context, already
+paired) and the bank YAML for that run's `bank_version` (ground truth). An LLM drafts the
+five dimensions against those two files, then a human reviews the draft before anyone
+runs `import`.
+
+    atlas-eval rubric import rubric.csv --run data/runs/<run-id> --scored-by claude-opus-5
+
+writes the filled-in rows back into that run's `scores.csv` in place. A blank row is left
+unscored, not zeroed; a row must have all five dimensions or none; each scored row needs a
+`scored_by` (from the CSV column, or the `--scored-by` flag); and `--confirmed-by` is the
+only source for `confirmed_by` — a drafting pass can never mark its own scores confirmed.
+Any problem aborts the whole import with nothing written. Always `--dry-run` first.
+
+Import does not regenerate `data/scores.csv` — run `atlas-eval rollup` afterward, same as
+after `atlas-eval run`, and before committing.
 
 ## Ground truth and verification
 
