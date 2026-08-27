@@ -1,0 +1,157 @@
+"""The Playwright transport: drive the Quick chat UI deterministically.
+
+Chosen over an LLM agent clicking through the UI because an agent makes unlogged
+judgement calls every run (which element, whether streaming finished, whether to
+retry) and those calls move scores without appearing in the record. A script
+makes the same calls every time, and breaks loudly when the UI changes.
+
+Selectors and the completion signal come from docs/recon/2026-08-27-quick-chat-dom.md,
+verified against the live agent. Completion is positive: one message footer per
+COMPLETED answer, so we wait for that count to reach the number asked.
+
+Authentication is never automated. The operator signs in once into a persistent
+profile; this module only detects that it has been bounced to a login page and
+aborts the run.
+"""
+
+from __future__ import annotations
+
+import time
+from datetime import datetime
+from pathlib import Path
+
+from atlas_eval.adapters import quick_dom as qd
+from atlas_eval.adapters.base import AskResult, Response, TransportError
+from atlas_eval.models import Question
+
+DEFAULT_PROFILE_DIR = Path(".auth/quick-profile")
+
+# The captured real answer was ~4.8k characters over several paragraphs, tables
+# and code blocks. Five minutes is generous rather than tight, because a false
+# timeout discards a whole run.
+ANSWER_TIMEOUT_MS = 300_000
+POLL_INTERVAL_MS = 1_000
+
+
+def _guard_auth(page) -> None:
+    if qd.is_auth_redirect(page.url):
+        raise TransportError(
+            "AUTH_REQUIRED",
+            f"bounced to a login page ({page.url[:120]}); sign in to the persistent "
+            "profile and re-run. This transport never fills in or submits a login form.",
+        )
+
+
+def wait_for_answer(
+    page,
+    expected_count: int,
+    timeout_ms: int = ANSWER_TIMEOUT_MS,
+    poll_ms: int = POLL_INTERVAL_MS,
+    sleep=None,
+) -> None:
+    """Block until `expected_count` answers have finished rendering.
+
+    The footer element renders once per completed answer, which is a positive
+    signal: it cannot confuse "finished" with "never started", which is exactly
+    what waiting for a stop control to vanish would do.
+    """
+    rest = sleep if sleep is not None else (lambda ms: time.sleep(ms / 1000))
+    waited = 0
+    while True:
+        _guard_auth(page)
+        if qd.completed_answer_count(page) >= expected_count:
+            return
+        if waited >= timeout_ms:
+            raise TransportError(
+                "TIMEOUT",
+                f"only {qd.completed_answer_count(page)} of {expected_count} answers "
+                f"completed within {timeout_ms // 1000}s",
+            )
+        rest(poll_ms)
+        waited += poll_ms
+
+
+def submit_question(page, text: str) -> None:
+    _guard_auth(page)
+    box = page.locator(qd.SEL_INPUT)
+    if box.count() == 0:
+        raise TransportError(
+            "SELECTOR_MISSING",
+            f"message input {qd.SEL_INPUT} not found; the Quick UI may have changed. "
+            "Recapture fixtures with tools/recon_quick_dom.py, or use the paste transport.",
+        )
+    box.fill(text)
+    box.press("Enter")
+
+
+class QuickPlaywrightBackend:
+    """Ask a whole bank in one Quick conversation."""
+
+    name = "quick"
+    transport = "playwright"
+
+    def __init__(
+        self,
+        agent: str,
+        url: str,
+        snapshot_data: dict,
+        profile_dir: Path = DEFAULT_PROFILE_DIR,
+        page=None,
+    ) -> None:
+        self.agent = agent
+        self.url = url
+        self.profile_dir = profile_dir
+        self._snapshot = snapshot_data
+        self._page = page  # injected in tests; a live page in real runs
+
+    def snapshot(self) -> dict:
+        return self._snapshot
+
+    def ask(self, questions: list[Question]) -> AskResult:
+        page = self._page
+        if page is None:
+            raise TransportError(
+                "SELECTOR_MISSING",
+                "no page supplied; open a persistent context and pass page=",
+            )
+
+        responses: list[Response] = []
+        conversation = qd.conversation_id(page)
+
+        try:
+            _guard_auth(page)
+            for index, question in enumerate(questions, 1):
+                submit_question(page, question.text)
+                wait_for_answer(page, expected_count=index)
+
+                current = qd.conversation_id(page)
+                if conversation is None:
+                    conversation = current
+                elif current != conversation:
+                    raise TransportError(
+                        "CONVERSATION_LOST",
+                        f"conversation changed from {conversation} to {current} before "
+                        f"{question.id}; `after` dependencies are void once the thread "
+                        "changes, so the run cannot continue",
+                    )
+
+                answers = qd.answer_texts(page)
+                if len(answers) < index:
+                    raise TransportError(
+                        "PARSE_FAILED",
+                        f"{index} answers completed but only {len(answers)} agent turns "
+                        f"are readable for {question.id}",
+                    )
+                responses.append(Response(
+                    question_id=question.id,
+                    answer=answers[index - 1],
+                    asked_at=datetime.now(),
+                    citations=qd.citation_labels(page),
+                ))
+        except TransportError as err:
+            return AskResult(
+                responses=responses, conversation_id=conversation,
+                complete=False, failure=str(err),
+            )
+
+        return AskResult(responses=responses, conversation_id=conversation, complete=True)
