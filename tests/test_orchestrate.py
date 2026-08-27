@@ -1,11 +1,12 @@
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from atlas_eval.adapters.base import AskResult, Response
 from atlas_eval.dataset import compute_question_sha256, load_bank
-from atlas_eval.orchestrate import OrchestrationError, run_bank
+from atlas_eval.orchestrate import OrchestrationError, _git_sha, run_bank
 from atlas_eval.runs import read_run
 
 BANK = """version: v3
@@ -165,3 +166,120 @@ def test_orchestrator_never_writes_a_rubric_value(tmp_path):
     src = open(mod.__file__).read()
     for dim in ("citations=", "correctness=", "gap_honesty=", "scope_discipline=", "clarity="):
         assert dim not in src, f"orchestrator must not set {dim}"
+
+
+class ScriptedBackend:
+    """A backend that returns exactly the AskResult it is handed, unfiltered.
+
+    StubBackend only ever emits one response per asked id, so it cannot
+    exercise a misbehaving backend. This one hands back whatever the test
+    scripts, including duplicate or unasked question_ids.
+    """
+    name, transport = "quirky", "stub"
+
+    def __init__(self, responses, complete=True, failure=None, conversation="conv-1"):
+        self._responses, self._complete = responses, complete
+        self._failure, self._conversation = failure, conversation
+        self.asked: list[str] = []
+
+    def snapshot(self):
+        return {"model_chip": "Advanced"}
+
+    def ask(self, questions):
+        self.asked = [q.id for q in questions]
+        return AskResult(
+            responses=self._responses,
+            conversation_id=self._conversation,
+            complete=self._complete, failure=self._failure,
+        )
+
+
+def test_duplicate_question_id_is_detected_and_named(tmp_path):
+    responses = [
+        Response(question_id="v3-Q1", answer=GOOD["v3-Q1"],
+                  asked_at=datetime(2026, 8, 27, 9, 0)),
+        Response(question_id="v3-Q1", answer="a rogue duplicate answer",
+                  asked_at=datetime(2026, 8, 27, 9, 1)),
+        Response(question_id="v3-Q2", answer=GOOD["v3-Q2"],
+                  asked_at=datetime(2026, 8, 27, 9, 2)),
+    ]
+    run_dir = run_bank(_bank_file(tmp_path), ScriptedBackend(responses),
+                       tmp_path / "runs", now=datetime(2026, 8, 27, 9, 30))
+
+    meta, written_responses, rows = read_run(run_dir)
+    assert meta.status.value == "incomplete"
+    assert meta.finished_at is None
+
+    # Neither copy of the duplicated id may reach the written record: the
+    # real answer must not be silently displaced by the rogue one.
+    assert "v3-Q1" not in written_responses
+    assert "a rogue duplicate answer" not in written_responses.values()
+    assert GOOD["v3-Q1"] not in written_responses.values()
+    assert not any(r.question_id == "v3-Q1" for r in rows)
+
+    text = (run_dir / "transcript.md").read_text()
+    assert "v3-Q1" in text
+    assert "duplicate" in text.lower()
+
+
+def test_response_id_not_in_bank_is_detected_and_named(tmp_path):
+    responses = [
+        Response(question_id="v3-Q1", answer=GOOD["v3-Q1"],
+                  asked_at=datetime(2026, 8, 27, 9, 0)),
+        Response(question_id="v3-Q2", answer=GOOD["v3-Q2"],
+                  asked_at=datetime(2026, 8, 27, 9, 1)),
+        Response(question_id="v3-Q99", answer="an id nobody asked",
+                  asked_at=datetime(2026, 8, 27, 9, 2)),
+    ]
+    run_dir = run_bank(_bank_file(tmp_path), ScriptedBackend(responses),
+                       tmp_path / "runs", now=datetime(2026, 8, 27, 9, 30))
+
+    meta, written_responses, rows = read_run(run_dir)
+    assert meta.status.value == "incomplete"
+    assert meta.finished_at is None
+
+    # The stray id must never be written as though it had been asked.
+    assert "v3-Q99" not in written_responses
+    assert "an id nobody asked" not in written_responses.values()
+    assert list(written_responses) == ["v3-Q1", "v3-Q2"]
+
+    text = (run_dir / "transcript.md").read_text()
+    assert "v3-Q99" in text
+
+
+def test_git_sha_marks_dirty_working_tree(monkeypatch):
+    import atlas_eval.orchestrate as mod
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return SimpleNamespace(returncode=0, stdout="abc1234\n")
+        if cmd[:2] == ["git", "status"]:
+            return SimpleNamespace(returncode=0, stdout=" M atlas_eval/orchestrate.py\n")
+        raise AssertionError(f"unexpected git invocation: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    assert _git_sha() == "abc1234-dirty"
+
+
+def test_git_sha_unmarked_on_clean_working_tree(monkeypatch):
+    import atlas_eval.orchestrate as mod
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return SimpleNamespace(returncode=0, stdout="abc1234\n")
+        if cmd[:2] == ["git", "status"]:
+            return SimpleNamespace(returncode=0, stdout="")
+        raise AssertionError(f"unexpected git invocation: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    assert _git_sha() == "abc1234"
+
+
+def test_git_sha_returns_none_when_git_unavailable(monkeypatch):
+    import atlas_eval.orchestrate as mod
+
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError("git executable not found")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    assert _git_sha() is None

@@ -15,7 +15,9 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from atlas_eval.adapters.base import Response
 from atlas_eval.dataset import compute_question_sha256, load_bank, resolve_run_order
+from atlas_eval.models import Question
 from atlas_eval.runs import RunMeta, RunStatus, ScoreRow, make_run_id, write_run
 from atlas_eval.scoring import Rubric, score_answer
 from atlas_eval.transcript import render_transcript
@@ -26,12 +28,77 @@ class OrchestrationError(Exception):
 
 
 def _git_sha() -> str | None:
+    """The commit the harness is running from, or None if it can't be determined.
+
+    Suffixed with "-dirty" when the working tree has uncommitted changes: a sha
+    with no such marker is supposed to fully describe the code that produced a
+    run, and this harness exists so a score from months ago can be
+    reinterpreted against that code. A bare sha recorded from a dirty tree
+    would be silently misleading, so the marker makes "this run's code isn't
+    fully captured by this sha" visible instead of assumed away.
+
+    Must never raise: degrades to None when git is unavailable (OSError, e.g.
+    the binary isn't installed) or the directory is not a repository (`git
+    rev-parse` exits non-zero).
+    """
     try:
-        out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                             text=True, check=False)
-        return out.stdout.strip() or None if out.returncode == 0 else None
+        rev = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                              text=True, check=False)
+        if rev.returncode != 0:
+            return None
+        sha = rev.stdout.strip()
+        if not sha:
+            return None
+
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True,
+                                 text=True, check=False)
+        if status.returncode == 0 and status.stdout.strip():
+            return f"{sha}-dirty"
+        return sha
     except OSError:
         return None
+
+
+def _validate_responses(
+    questions: list[Question], responses: list[Response]
+) -> tuple[list[Response], list[str]]:
+    """Sanitize a backend's responses before they touch the run record.
+
+    A misbehaving backend can return two kinds of data nobody asked for: the
+    same question_id twice (the second silently displaces the first wherever
+    responses are keyed by id, so the real answer disappears with no trace),
+    or a question_id that was never asked (which would otherwise be written
+    into responses.yaml as though it had been). Both are detected here and
+    both are stripped out entirely -- for a duplicate, neither copy can be
+    trusted to be the "real" one, so both are dropped rather than guessing.
+
+    Returns the sanitized response list (safe to write and to score) and a
+    list of human-readable problem descriptions naming the offending id(s),
+    empty when nothing was wrong.
+    """
+    asked_ids = {q.id for q in questions}
+    counts: dict[str, int] = {}
+    for response in responses:
+        counts[response.question_id] = counts.get(response.question_id, 0) + 1
+
+    duplicate_ids = sorted(qid for qid, n in counts.items() if n > 1)
+    stray_ids = sorted(qid for qid in counts if qid not in asked_ids)
+
+    problems = []
+    if duplicate_ids:
+        problems.append(
+            "backend returned a duplicate response for question_id(s): "
+            + ", ".join(duplicate_ids)
+        )
+    if stray_ids:
+        problems.append(
+            "backend returned response(s) for question_id(s) not among the "
+            "questions asked: " + ", ".join(stray_ids)
+        )
+
+    tainted = set(duplicate_ids) | set(stray_ids)
+    clean = [r for r in responses if r.question_id not in tainted]
+    return clean, problems
 
 
 def run_bank(
@@ -67,7 +134,16 @@ def run_bank(
     snapshot = backend.snapshot()
     finished = now or datetime.now()
 
-    by_id = {r.question_id: r for r in result.responses}
+    # The backend has already run by this point, so the work is done; the
+    # question is only what we do with a response set we cannot trust. We
+    # write the run as `incomplete` (rather than raising and discarding the
+    # work) because that status already means exactly this: kept on disk for
+    # diagnosis, excluded from bank-level results. Raising here would throw
+    # away the started_at/snapshot/backend-name evidence an operator needs to
+    # even notice which run and which backend misbehaved.
+    clean_responses, problems = _validate_responses(questions, result.responses)
+
+    by_id = {r.question_id: r for r in clean_responses}
     rows: list[ScoreRow] = []
     for question in questions:
         response = by_id.get(question.id)
@@ -82,7 +158,12 @@ def run_bank(
                                        response.observed_stance),
         ))
 
-    status = RunStatus.COMPLETE if result.complete else RunStatus.INCOMPLETE
+    failure = result.failure
+    if problems:
+        problem_text = "; ".join(problems)
+        failure = f"{failure}; {problem_text}" if failure else problem_text
+
+    status = RunStatus.COMPLETE if (result.complete and not problems) else RunStatus.INCOMPLETE
     meta = RunMeta(
         run_id=make_run_id(finished, backend.name, bank.version),
         backend=backend.name,
@@ -93,17 +174,17 @@ def run_bank(
         agent_id=(snapshot.get("agent") or {}).get("AgentId"),
         conversation_id=result.conversation_id,
         started_at=started,
-        finished_at=finished if result.complete else None,
+        finished_at=finished if status == RunStatus.COMPLETE else None,
         harness_git_sha=harness_git_sha or _git_sha(),
         status=status,
     )
 
-    transcript = render_transcript(meta, questions, result.responses, snapshot)
-    if result.failure:
-        transcript += f"\n---\n\n**Run failure:** {result.failure}\n"
+    transcript = render_transcript(meta, questions, clean_responses, snapshot)
+    if failure:
+        transcript += f"\n---\n\n**Run failure:** {failure}\n"
 
     return write_run(
         runs_dir, meta,
-        {r.question_id: r.answer for r in result.responses},
+        {r.question_id: r.answer for r in clean_responses},
         transcript, snapshot, rows,
     )
