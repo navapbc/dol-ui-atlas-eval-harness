@@ -63,6 +63,9 @@ Audit process. Each row records `scored_by` (who or what produced the values: a 
 id or a person's name) and `confirmed_by` (the human who signed off; `None` until then),
 so a report can be restricted to human-confirmed scores.
 
+The 0-2 scale is defined in [reference/rubric.md](reference/rubric.md):
+2 = fully met, 1 = partially met or unverifiable, 0 = failed.
+
 ## Drafting rubric scores
 
 `atlas-eval rubric export`/`atlas-eval rubric import` are the import/export boundary
