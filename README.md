@@ -35,6 +35,11 @@ Send a bank for SME review, then import the verdicts:
     atlas-eval review import v3_review_oscar.xlsx --dry-run
     atlas-eval review import v3_review_oscar.xlsx
 
+Check how far verification has got, and who has returned verdicts:
+
+    atlas-eval coverage
+    atlas-eval coverage --detail
+
 Draft rubric scores for a run, then import them once a human has reviewed the draft:
 
     atlas-eval rubric export --run data/runs/2026-08-12_1704_quick_v5 -o v5_rubric.csv

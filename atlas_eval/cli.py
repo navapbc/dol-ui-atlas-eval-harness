@@ -289,6 +289,18 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 1 if had_error else 0
 
 
+def _cmd_coverage(args: argparse.Namespace) -> int:
+    from atlas_eval.coverage import build_coverage, format_coverage
+
+    banks_dir = Path(args.banks)
+    if not banks_dir.is_dir():
+        print(f"error: no such directory: {banks_dir}")
+        return 2
+
+    print(format_coverage(build_coverage(banks_dir), detail=args.detail))
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from atlas_eval.adapters.quick_paste import QuickPasteBackend
     from atlas_eval.orchestrate import OrchestrationError, run_bank
@@ -505,6 +517,17 @@ def main(argv: list[str] | None = None) -> int:
         help="regenerate in memory and fail if the committed file would differ",
     )
     p_rollup.set_defaults(func=_cmd_rollup)
+
+    p_cov = sub.add_parser(
+        "coverage",
+        help="SME verification progress across the banks",
+    )
+    p_cov.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_cov.add_argument(
+        "--detail", action="store_true",
+        help="list every question with its status, reviewer and date",
+    )
+    p_cov.set_defaults(func=_cmd_coverage)
 
     p_rep = sub.add_parser("report", help="verified and exploratory scores per run")
     p_rep.add_argument("--run", help="a single run directory; default is all runs")
