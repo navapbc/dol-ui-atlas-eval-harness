@@ -51,7 +51,12 @@ class FakeLocator:
 
     def press(self, key):
         self._page.pressed.append((self._sel, key))
-        self._page.on_submit()
+
+    def click(self):
+        self._page.clicked.append(self._sel)
+        # Clicking Send is what submits a question in this UI (Enter does not).
+        if self._sel == qd.SEL_SEND:
+            self._page.on_submit()
 
     def get_attribute(self, name):
         if (self._sel == qd.SEL_CITATION and self._turn_index is not None
@@ -88,7 +93,7 @@ class FakePage:
     def __init__(self, url="https://q/sn/account/njuimod/start/agents"):
         self.url = url
         self.counts, self.attrs, self.texts, self.lists = {}, {}, {}, {}
-        self.filled, self.pressed = [], []
+        self.filled, self.pressed, self.clicked = [], [], []
         self.citations_by_turn: dict[int, list[str]] = {}
         self.on_submit = lambda: None
 
@@ -134,13 +139,16 @@ def test_wait_for_answer_aborts_on_an_auth_redirect_mid_wait():
     assert exc.value.code == "AUTH_REQUIRED"
 
 
-def test_submit_question_fills_the_input_and_presses_enter():
+def test_submit_question_fills_the_input_and_clicks_send():
     from atlas_eval.adapters import quick_dom as qd
     page = FakePage()
     page.counts[qd.SEL_INPUT] = 1
+    page.counts[qd.SEL_SEND] = 1
     submit_question(page, "what does DXCBD87E do?")
     assert page.filled == [(qd.SEL_INPUT, "what does DXCBD87E do?")]
-    assert page.pressed == [(qd.SEL_INPUT, "Enter")]
+    # This UI does not submit on Enter; the Send button is what sends.
+    assert page.clicked == [qd.SEL_SEND]
+    assert page.pressed == []
 
 
 def test_submit_question_raises_when_the_input_is_absent():
@@ -150,11 +158,22 @@ def test_submit_question_raises_when_the_input_is_absent():
     assert exc.value.code == "SELECTOR_MISSING"
 
 
+def test_submit_question_raises_when_the_send_button_is_absent():
+    from atlas_eval.adapters import quick_dom as qd
+    page = FakePage()
+    page.counts[qd.SEL_INPUT] = 1  # box present, but no Send button registered
+    with pytest.raises(TransportError) as exc:
+        submit_question(page, "anything")
+    assert exc.value.code == "SELECTOR_MISSING"
+    assert "send" in exc.value.detail.lower()
+
+
 def _wired_page(n_questions):
     """A page that completes one answer per submitted question."""
     from atlas_eval.adapters import quick_dom as qd
     page = FakePage()
     page.counts[qd.SEL_INPUT] = 1
+    page.counts[qd.SEL_SEND] = 1
     page.counts[qd.SEL_AI_FOOTER] = 0
     page.counts[qd.SEL_THREAD] = 1
     page.attrs[(qd.SEL_THREAD, "data-conversation-id")] = "conv-1"
@@ -181,6 +200,7 @@ def _wired_page_with_baseline(baseline: int):
     from atlas_eval.adapters import quick_dom as qd
     page = FakePage()
     page.counts[qd.SEL_INPUT] = 1
+    page.counts[qd.SEL_SEND] = 1
     page.counts[qd.SEL_AI_FOOTER] = baseline
     page.counts[qd.SEL_THREAD] = 1
     page.attrs[(qd.SEL_THREAD, "data-conversation-id")] = "conv-1"
@@ -210,6 +230,7 @@ def _wired_page_with_unequal_baselines(footers: int, turns: int):
     """
     page = FakePage()
     page.counts[qd.SEL_INPUT] = 1
+    page.counts[qd.SEL_SEND] = 1
     page.counts[qd.SEL_AI_FOOTER] = footers
     page.counts[qd.SEL_THREAD] = 1
     page.attrs[(qd.SEL_THREAD, "data-conversation-id")] = "conv-1"
@@ -554,3 +575,112 @@ def test_backend_identity_and_no_scoring_import():
     # Never handle credentials.
     for banned in ("password", "fill_password", "credential"):
         assert banned not in src.lower(), banned
+
+
+# --- agent selection (Path B: choose which agent answers) -------------------
+
+class _SelMarker:
+    """Stand-in for the locator returned by page.get_by_text(name, exact=True),
+    passed as the `has=` filter. Carries just the text to match a card by."""
+
+    def __init__(self, text):
+        self.text = text
+
+
+class _SelLoc:
+    """A locator over the agent-selector controls, rich enough to record the
+    click sequence select_agent makes and to model exact-title card filtering."""
+
+    def __init__(self, page, kind, key=None, n=1):
+        self.page, self.kind, self.key, self._n = page, kind, key, n
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        return self._n
+
+    def filter(self, has=None):
+        # `has` is a _SelMarker; keep only cards whose title is EXACTLY its text,
+        # so a shorter name ("...Specialist") never matches the longer card
+        # ("...Specialist (v2)").
+        matches = [t for t in self.page.card_titles if t == has.text]
+        return _SelLoc(self.page, "card", key=has.text, n=len(matches))
+
+    def click(self):
+        self.page.clicks.append(f"{self.kind}:{self.key}" if self.key else self.kind)
+
+
+class _SelPage:
+    def __init__(self, card_titles, tabs=("Recent", "Favorites"),
+                 has_opener=True, url="https://q/sn/account/njuimod/start/home"):
+        self.url = url
+        self.card_titles = list(card_titles)
+        self.tabs = set(tabs)
+        self.has_opener = has_opener
+        self.clicks = []
+
+    def locator(self, selector):
+        if selector == qd.SEL_AGENT_OPEN:
+            return _SelLoc(self, "open", n=1 if self.has_opener else 0)
+        if selector == qd.SEL_AGENT_CARD:
+            return _SelLoc(self, "card", n=len(self.card_titles))
+        return _SelLoc(self, "other", n=0)
+
+    def get_by_role(self, role, name, exact=False):
+        return _SelLoc(self, "tab", key=name, n=1 if name in self.tabs else 0)
+
+    def get_by_text(self, text, exact=False):
+        return _SelMarker(text)
+
+
+_V1 = "Engineering Onboarding Specialist"
+_V2 = "Engineering Onboarding Specialist (v2)"
+
+
+def test_select_agent_opens_tab_then_clicks_the_named_card():
+    from atlas_eval.adapters.quick_playwright import select_agent
+    page = _SelPage([_V1, _V2])
+    select_agent(page, _V2)
+    assert page.clicks == ["open", "tab:Favorites", f"card:{_V2}"]
+
+
+def test_select_agent_exact_match_does_not_pick_the_v2_card_for_v1():
+    # _V1 is a prefix of _V2; an exact-title match must click v1's card only.
+    from atlas_eval.adapters.quick_playwright import select_agent
+    page = _SelPage([_V1, _V2])
+    select_agent(page, _V1)
+    assert page.clicks[-1] == f"card:{_V1}"
+
+
+def test_select_agent_honours_a_non_default_tab():
+    from atlas_eval.adapters.quick_playwright import select_agent
+    page = _SelPage([_V1], tabs=("Recent", "Favorites", "My chat agents"))
+    select_agent(page, _V1, tab="My chat agents")
+    assert page.clicks == ["open", "tab:My chat agents", f"card:{_V1}"]
+
+
+def test_select_agent_raises_when_no_card_matches():
+    from atlas_eval.adapters.quick_playwright import select_agent
+    page = _SelPage([_V1, _V2])
+    with pytest.raises(TransportError) as exc:
+        select_agent(page, "Nonexistent Agent")
+    assert exc.value.code == "AGENT_NOT_FOUND"
+
+
+def test_select_agent_raises_when_the_selector_is_absent():
+    from atlas_eval.adapters.quick_playwright import select_agent
+    page = _SelPage([_V1], has_opener=False)
+    with pytest.raises(TransportError) as exc:
+        select_agent(page, _V1)
+    assert exc.value.code == "SELECTOR_MISSING"
+
+
+def test_select_agent_aborts_on_an_auth_redirect():
+    from atlas_eval.adapters.quick_playwright import select_agent
+    page = _SelPage([_V1],
+                    url="https://q/sn/account/njuimod/start/home?redirect_uri=x&isauthcode=true")
+    with pytest.raises(TransportError) as exc:
+        select_agent(page, _V1)
+    assert exc.value.code == "AUTH_REQUIRED"

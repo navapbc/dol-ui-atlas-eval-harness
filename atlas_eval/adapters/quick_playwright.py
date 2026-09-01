@@ -100,7 +100,78 @@ def submit_question(page, text: str) -> None:
             "Recapture fixtures with tools/recon_quick_dom.py, or use the paste transport.",
         )
     box.fill(text)
-    box.press("Enter")
+    # This UI does not submit on Enter (the text just stays in the box), so click
+    # the Send button. It is disabled until the box holds text; .click() auto-waits
+    # for the enabled state, so the fill above must land first.
+    send = page.locator(qd.SEL_SEND)
+    if send.count() == 0:
+        raise TransportError(
+            "SELECTOR_MISSING",
+            f"send button {qd.SEL_SEND} not found after filling the prompt; the Quick "
+            "UI may have changed. Recapture fixtures with tools/recon_quick_dom.py, or "
+            "use the paste transport.",
+        )
+    send.first.click()
+
+
+def _settle(page, ms: int) -> None:
+    """Give the SPA a moment to render after a click.
+
+    The dropdown's tab panels render their agent cards asynchronously, so a
+    card count taken immediately after switching tabs can read zero before the
+    cards mount. Uses the page's own timer when present; a no-op otherwise, so
+    the fake pages in the unit tests need not implement it.
+    """
+    fn = getattr(page, "wait_for_timeout", None)
+    if fn is not None:
+        fn(ms)
+
+
+def select_agent(page, name: str, tab: str = "Favorites") -> None:
+    """Pick the named agent from the selector dropdown before asking.
+
+    Quick has no per-agent URL and never puts the agent id in the DOM, so the
+    only way to choose which agent answers is to open the selector and click
+    the agent's card. `name` is matched EXACTLY against a card's title because
+    one display name can be a prefix of another ("...Specialist" vs
+    "...Specialist (v2)"); an exact match is the only way to pick the shorter
+    name without also catching the longer one.
+
+    Non-recent agents sit behind tabs; the default `tab` (Favorites) is where
+    the operator pins every agent under test -- Quick does not always list a
+    freshly built agent under Recent. The post-answer banner check in
+    `_check_agent` still runs afterwards as an independent confirmation that
+    the agent chosen here is the one that actually answered.
+    """
+    _guard_auth(page)
+    opener = page.locator(qd.SEL_AGENT_OPEN)
+    if opener.count() == 0:
+        raise TransportError(
+            "SELECTOR_MISSING",
+            f"agent selector {qd.SEL_AGENT_OPEN} not found; the Quick UI may have "
+            "changed. Recapture with tools/recon_quick_agents.py, or use the paste "
+            "transport.",
+        )
+    opener.first.click()
+    _settle(page, 1000)
+
+    # The tab may already be active; clicking it again is harmless. Only skip
+    # when the tab control genuinely is not present.
+    tab_loc = page.get_by_role("tab", name=tab, exact=True)
+    if tab_loc.count():
+        tab_loc.first.click()
+        _settle(page, 1500)  # the tab's agent cards mount asynchronously
+
+    card = page.locator(qd.SEL_AGENT_CARD).filter(
+        has=page.get_by_text(name, exact=True)
+    )
+    if card.count() == 0:
+        raise TransportError(
+            "AGENT_NOT_FOUND",
+            f"no agent card titled exactly {name!r} on the {tab!r} tab; check the "
+            "name matches the card, and that the agent is pinned to that tab.",
+        )
+    card.first.click()
 
 
 class QuickPlaywrightBackend:
@@ -215,6 +286,12 @@ class QuickPlaywrightBackend:
             for index, question in enumerate(questions, 1):
                 submit_question(page, question.text)
                 wait_for_answer(page, expected_count=baseline_footers + index)
+                # The completed-answer footer renders slightly before the
+                # citation chips do, so a scrape the instant the footer appears
+                # can miss them and record citations=0. This settle only affects
+                # the recorded citation COUNT, never a score: citation_recall is
+                # computed from the answer TEXT by the scorer, not from chips.
+                _settle(page, 1200)
 
                 current = qd.conversation_id(page)
                 if conversation is None:

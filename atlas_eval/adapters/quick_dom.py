@@ -32,6 +32,20 @@ SEL_MODEL_CHIP = '[data-testid="qbiz-model-selection-chip"]'
 SEL_AGENT_SELECTOR = '[data-testid="qbiz-component-chat-experience-agent-selector-wrapper"]'
 SEL_STATUS = 'div[role="status"]'
 
+# Choosing which agent answers: Quick has no per-agent URL, so the only lever is
+# to open the selector dropdown (SEL_AGENT_OPEN shows the active agent's name and
+# toggles the menu) and click the target agent's card (SEL_AGENT_CARD). Captured
+# from the live picker on 2026-09-01; see docs/recon and tests/fixtures/quick.
+SEL_AGENT_OPEN = '[data-testid="qbiz-component-agent-selector-footer-button"]'
+SEL_AGENT_CARD = '[data-testid="qbiz-components-agent-card"]'
+
+# Submitting a question. This UI does NOT send on Enter -- pressing Enter in the
+# prompt box leaves the text sitting there. The send control is the footer
+# button labelled "Send" (no testid of its own); it stays disabled until the
+# prompt holds text, so clicking it auto-waits for that enabled state. Captured
+# from the live footer on 2026-09-01.
+SEL_SEND = 'button[aria-label="Send"]'
+
 # The run state is not URL-addressable: the landing and run-ready URLs were
 # byte-identical, and both are the auth redirect. So these markers mean "we are
 # looking at a login hop, not the chat".

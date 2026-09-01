@@ -4,8 +4,19 @@ Authentication is a deliberate human step, kept out of the run path: the harness
 never submits credentials. Sign in here, close the window, and later runs reuse
 the profile until the session expires.
 
+The window is a blank browser with none of your existing logins, so start from
+the AWS access portal (Identity Center), pick the dev account (298632317228),
+open Quick, then click into an agent so the chat input is showing before you
+press Enter -- the readiness check looks for that input, so stopping on the
+agents *picker* page reports "chat input not found" even though the session did
+save.
+
     .venv/bin/python tools/open_quick_session.py \\
-      --url "https://us-east-1.quicksight.aws.amazon.com/sn/account/njuimod/start/agents"
+      --url "https://njoitaws.awsapps.com/start/#/?tab=accounts"
+
+The --url is only where login STARTS; only the page you end on is checked. The
+Quick agents landing page, for reference, is:
+    https://us-east-1.quicksight.aws.amazon.com/sn/account/njuimod/start/agents
 """
 
 from __future__ import annotations

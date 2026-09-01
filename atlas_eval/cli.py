@@ -395,7 +395,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     from playwright.sync_api import sync_playwright
 
-    from atlas_eval.adapters.quick_playwright import QuickPlaywrightBackend
+    from atlas_eval.adapters.base import TransportError
+    from atlas_eval.adapters.quick_playwright import (
+        QuickPlaywrightBackend, select_agent,
+    )
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(str(profile), headless=False)
         # Everything from here on can raise (a bad URL, a navigation timeout,
@@ -405,12 +408,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.goto(args.url)
+            # Choose the agent under test before asking. Quick has no per-agent
+            # URL, so without this the run would hit whatever agent Quick opens
+            # by default. Skipped when no agent name is given (use the active
+            # one). The banner check inside ask() still confirms the choice.
+            if args.agent_name:
+                select_agent(page, args.agent_name, tab=args.agent_tab)
+                page.wait_for_timeout(2000)  # let the chosen agent's chat settle
             backend = QuickPlaywrightBackend(
                 agent=args.agent_name or "", url=args.url,
                 snapshot_data=snapshot_data, profile_dir=profile, page=page,
             )
             run_dir = run_bank(bank_path, backend, Path(args.runs))
-        except OrchestrationError as err:
+        except (OrchestrationError, TransportError) as err:
             print(f"error: {err}")
             return 2
         finally:
@@ -545,6 +555,9 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--print-sheet", action="store_true",
                        help="print the run sheet to fill in, then exit (paste transport)")
     p_run.add_argument("--url", help="Quick chat URL (playwright transport)")
+    p_run.add_argument("--agent-tab", default="Favorites",
+                       help="selector tab the agent is pinned to (playwright "
+                            "transport); default Favorites")
     p_run.add_argument("--profile-dir", default=".auth/quick-profile")
     p_run.add_argument("--account-id", help="AWS account id, for the config snapshot")
     p_run.add_argument("--profile", help="named AWS CLI profile for the config snapshot")

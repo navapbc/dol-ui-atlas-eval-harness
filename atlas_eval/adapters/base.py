@@ -56,6 +56,12 @@ class TransportError(Exception):
         # and no agent id in the DOM, so this is the only way a wrong-agent run
         # is ever detected instead of silently scored as if it were correct.
         "AGENT_MISMATCH",
+        # The agent under test could not be found in the selector dropdown to
+        # click (wrong name, or not pinned to the tab being searched). Raised
+        # while CHOOSING the agent, before any question is asked -- distinct
+        # from AGENT_MISMATCH, which is raised after an answer names the wrong
+        # agent.
+        "AGENT_NOT_FOUND",
     )
 
     def __init__(self, code: str, detail: str) -> None:
