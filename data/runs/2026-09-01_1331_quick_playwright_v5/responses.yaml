@@ -1,0 +1,589 @@
+responses:
+- id: v5-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe daily NOPAY
+    certification file generation is handled within the broader Daily Certification
+    Extracts job. Here's the complete breakdown.\n\nJob: L2DCWEXR\n\nThis job belongs
+    to subsystem CWE1 (Daily Process) and generates the Daily Certification Extracts
+    Report using both the PAYVSAM (Loop Pay) and NOPAY backup GDG files. It has a
+    Restart Criticality of 1 (highest).\nL2DCWEXR.md\n\nImportant context: The NOPAY
+    file is processed together with the LOOPPAY file in a single job — they are not
+    generated independently.\n\nStep-by-Step Execution Sequence\nL2DCWEXR Job Steps\n\
+    \n#\n\n\t\n\nStep Name\n\n\t\n\nUtility / Program\n\n\t\n\n...\n\n\n1\tRECALDSN\t\
+    IEFBR14\t...\n2\tCLEANUP1\tIEFBR14\t...\n3\tCOPYVPAY\tIDCAMS REPRO\t...\n4\tSORTVPAY\t\
+    SORT\t...\n5\tCOPYNPAY\tIDCAMS REPRO\t...\n6\tSORTNPAY\tSORT\t...\n7\tCLEANUP2\t\
+    IEFBR14\t...\n8\tDLYCWEXR\tDXCBDA2R (COBOL)\t...\n9\tCOPYCWER\tIEBGENER\t...\n\
+    View more\nThe 12 Output Files from DXCBDA2R (Step 8)\n\nThe core COBOL program
+    categorizes transactions based on the DATECARD processing date and writes them
+    to these audit buckets :\nL2DCWEXR.md\n\nADTPRVWK — Previous week's pay period
+    transactions\nADTD0629 — Deduction Code 0629 transactions\nADTD0928 — Deduction
+    Code 0928 transactions\nADTONEWK — One-week pay cycle transactions\nADTTWOWK —
+    Two-week (bi-weekly) pay cycle transactions\nADTCWE14 — Current Week Earnings
+    over a 14-day period\nADTNEARN — Newly calculated/adjusted earnings\nADTWEARN
+    — Standard weekly earnings\nADTLPAYS — Last/final pay transactions (e.g., terminations)\n\
+    VOIDI1FL — Voided/reversed payment transactions\nBYPASSFL — Transactions bypassed
+    from standard processing\nDAILYREP — Formatted Daily Audit Report (132-byte records)\n\
+    Key Design Points\nConditional gating: Steps 3–6 and 8–9 are skipped if any prior
+    step returns a non-zero RC. Steps 1, 2, and 7 run unconditionally.\nL2DCWEXR.md\n\
+    Shared access: Both GDG backups are opened in shared mode, so other concurrent
+    jobs are not blocked.\nL2DCWEXR.md\nHeader skip: Both IDCAMS REPRO steps skip
+    the first record (header/control record) of their respective VSAM backups.\nL2DCWEXR.md\n\
+    Record sizes: LOOPPAY = 323 bytes; NOPAY = 281 bytes.\nL2DCWEXR.md\nRestart: The
+    JCL header documents restart procedures — most data-preparation steps restart
+    from CLEANUP1; the two cleanup steps restart from themselves.\nL2DCWEXR.txt\n\
+    A Note on NOPAYSUP\n\nThe knowledge base also documents a separate program called
+    NOPAYSUP, which suppresses duplicate certifications between the LOOPPAY and NOPAY
+    files. It executes after DXCBDSUP has completed suppression on the LOOPPAY file,
+    in a different job context — not within L2DCWEXR itself.\nNOPAYSUP.txt\nNOPAYSUP.txt\n\
+    \nWhat would you like to explore next?\n\nHow does DXCBDA2R categorize transactions?\n\
+    \nTell me about the NOPAYSUP suppression program\n\nWhat are the restart procedures
+    for L2DCWEXR?\n\nWhat upstream jobs produce the NOPAY and LOOPPAY backups?"
+- id: v5-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nGood news — both
+    DXCBO98B and job ZUMDA2R1 are well-documented in the knowledge base. However,
+    I need to flag a naming correction first.\n\nName Clarification\n\nYour runbook
+    says DXCB098B, but the program name in both the JCL source and the COBOL analysis
+    document is actually DXCBO98B (letter O, not digit 0). This follows the LOOPS
+    DXCB* batch naming convention. Please verify your runbook — the program the knowledge
+    base documents is DXCBO98B.\nZUMDA2R1.txt\nDXCBO98B.md\n\nProgram DXCBO98B — NOPAY
+    EB → PAYVSAM Converter\n\nThis is a batch COBOL program (Main/Driver module, sequential
+    file access, no MQ). It reads 281-byte NOPAY EB records from INFILE and writes
+    360-byte PAYVSAM-format EB records to OUTFILE.\nDXCBO98B.md\n\nWhere It Runs in
+    Job ZUMDA2R1\n\nThe JCL comment directly above the step reads: *T.M.CONVERT NOPAY
+    EB RECORD TO VSAMPAY. It executes at step DXCBO98B, conditioned COND=(0,NE) (skipped
+    if any prior step fails).\nZUMDA2R1.txt\n\nINFILE → LAK2LDXP.ZUMDA2R1.MAIL.NOPAYEB.DTL
+    (281-byte FB, produced by the earlier INCLEB sort step which filters NOPAY VSAM
+    records where Transitional UI Pay is between X'0064' and X'00C7')\nOUTFILE → LAK2LDXP.ZUMDA2R1.MAIL.VSAMPAY.DTL
+    (360-byte FB, newly created)\nProcessing Logic (24 Functional Steps)\n\nThe program
+    follows a simple open → prime read → loop → summary → close pattern:\n\n1. Open
+    Files — Opens NOPAY input (read) and PAYVSAM output (write).\n\n2. Prime Read
+    — Reads the first NOPAY record; if EOF immediately, skips to step 23.\n\n3–21.
+    Per-Record Conversion Loop — For each record:\n\nTable\n\n#\n\n\t\n\nFunctionality\n\
+    \n\t\n\nWhat Happens\n\n\n3\tMap Claimant ID\tNOPAY-SSN → EB-SSN; NOPAY-PC → EB-PC;
+    NOPAY-DOC → EB-DOC\n4\tMap Geographic Fields\tZIP (5+4 digits), Responsible Local
+    Office, Local Office — all direct transfers\n5\tMap Dates/Times\tCWE Dates 1–4,
+    Date Entered System transferred as-is; NOPAY-TIME-OF-ENTRY → EB-TIME-OF-CERT (repurposed
+    as certification time)\n6\tMap Terminal/Operator\tEntry Terminal ID → Cert Terminal
+    ID; Entry Operator ID → Cert Operator ID\n7\tSet Decert/Check Defaults\tPseudo
+    Check #, Actual Check #, Check Amount, Date Paid, Time of Decert → zeroes; Decert
+    Terminal ID → spaces; Decert Operator ID → zero; Void Indicator → 0 (active)\n\
+    8\tMap WBR/WBA\tWeekly Benefit Rate and Weekly Benefit Amount — direct transfer\n\
+    9\tMap Financial Amounts\tClaim Balance, Earnings (CWE1/CWE2), Pension (CWE1/CWE2),
+    Other Amount, Gross Amount\n10\tMap Work-Week Fields\tWork-Week Earnings and Work-Week
+    Indicators for CWE1 and CWE2\n11\tMap Health/Offset/UI\tHealth Amount, Offset
+    Amounts (CWE1/CWE2), Transitional UI Payments (CWE1/CWE2)\n12\tReformat Name\t
+    Input: LASTNAME/FIRSTNAME MIDDLENAME → split on /, split on space → reassemble
+    as FIRST MIDDLE LAST in EB-FIRST-MIDDLE-LAST-NAME\nView more\n\n22. Loop — Read
+    next NOPAY record, increment NUM-INPUT if found, set EOF='Y' if not; repeat steps
+    3–21.\n\n23. Display Summary — Always runs (even if input was empty). Prints banner
+    \"E.B. records converted to payvsam\" with TOTAL INPUT RECORDS (NUM-INPUT) and
+    TOTAL OUTPUT RECORDS (NUM-TOT-OUTPUT).\n\n24. Close Files — Close INFILE then
+    OUTFILE.\n\nKey Policy Rules (Hard-Coded Defaults)\nPayment Type Indicator is
+    always '3' — no exceptions\nAll decertification fields zeroed/blanked — these
+    are new certifications, not decerts\nFinancial Institution Name always blank —
+    NOPAY records have no banking info\nCheck Amount, Actual Check #, Pseudo Check
+    #, Date Paid all zero — no payment is being issued at conversion time\nImportant
+    Context Within ZUMDA2R1\n\nThis program is one step in a larger pipeline. The
+    NOPAY EB records it consumes were pre-filtered by the INCLEB SORT step (which
+    selects records from the NOPAY VSAM cluster where positions 217–218 have a binary
+    value between X'0064' and X'00C7', i.e., Transitional UI Pay values of 100–199).
+    The VSAMPAY output from DXCBO98B feeds into downstream mailing/check-generation
+    processing in the remaining job steps.\nZUMDA2R1.txt\nZUMDA2R1.md\n\nWhat would
+    you like to explore next?\n\nWalk me through the entire ZUMDA2R1 job flow\n\n\
+    Show me the complete field mapping with positions\n\nTrace the downstream consumers
+    of the VSAMPAY output"
+- id: v5-Q3
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe knowledge base
+    has no transaction by the name LOJ4S200, and I need to flag a structural issue
+    with that identifier before we go further.\n\nCICS Transaction ID Length Issue\n\
+    \nStandard CICS transaction IDs are 1–4 characters long. LOJ4S200 is 8 characters,
+    which means it cannot be a valid CICS transaction ID. The engineer's note may
+    be conflating two different identifiers — possibly a 4-character transaction ID
+    and a screen/conversation code. Here are some possibilities to check:\n\nLOJ4
+    as the transaction + S200 as something else (a screen number, a segment identifier,
+    or a conversation type)?\nThe documented LOOPS CICS transaction IDs in the knowledge
+    base include LO4W (Online Payment), LO21 (Voice Payment), LODK, LODQ, and LODR
+    (web-based inquiries) — none of which is LOJ4.\nThe conversation ID A200 is documented
+    as an Inquiry type, classified as read-only. It's possible someone wrote \"S200\"\
+    \ when they meant \"A200.\"\nWhat Is Documented for \"Stimulus\"\n\nThe word \"\
+    stimulus\" in the knowledge base refers exclusively to batch mailroom processing,
+    not a CICS inquiry transaction :\nDXCB116E.md\nL2DFACLT.md\n\nJob L2DFACLT filters
+    journal records for transaction types C010/C030/C060, transforms them into 500-byte
+    Stimulus records via program DXCB116E, sorts them, and consolidates via program
+    DXCBO29E to produce a STIMULUS GDG output file.\nL2DFACLT.md\nL2DFACLT.md\nThese
+    are batch programs, not online CICS screens.\nRecommendations\n\nI cannot confirm
+    or describe what LOJ4S200 is or which program handles it — the knowledge base
+    has no process, program, screen, or transaction by that name. Before I can help
+    further:\n\nCheck the runbook for a typo — could the transaction be LO4W (4 chars,
+    Online Payment) and the screen/conversation A200 (Inquiry)?\nIf the intent is
+    truly stimulus payment inquiry, the batch job L2DFACLT and its programs (DXCB116E,
+    DXCBO29E) are the documented stimulus artifacts — but they're batch, not online
+    inquiry.\nThe CSD (CICS System Definition) file — which would map transaction
+    IDs to programs — is noted as missing from the knowledge base , so even valid
+    transaction-to-program mappings cannot be confirmed from the held source.\ncode_issues_20260...\n\
+    Would you like to explore one of these angles further?\n\nCheck LO4W or A200 conversation
+    details\n\nReview the batch stimulus processing (L2DFACLT)\n\nLet me verify the
+    name in our runbook first"
+- id: v5-Q4
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nGreat question —
+    this is well-documented in the knowledge base and the answer has an important
+    nuance. Here's the full picture:\n\nShort Answer: Derived by Construction, Not
+    Enforced at Runtime\n\nThe overview document (00_ca7_daily_overview.md) states
+    this directly :\n00_ca7_daily_over...\n\n\"In the held daily programs, the Saturday
+    week-ending date (CWE) is produced by construction, not validated at runtime.\"\
+    \n\nIn other words: every program that produces a CWE date computes it so it always
+    lands on a Saturday — but in the documented programs, no active runtime guard
+    rejects a non-Saturday value if one somehow got in.\n\nPrograms That Derive Saturday
+    by Construction\n\nHere are the documented mechanisms, each of which you can point
+    to:\n\nTable\n\nProgram\n\n\t\n\nMechanism\n\n\t\n\nSource\n\n\nUIMB0018\tUses
+    DAYS-TO-PREV-SATURDAY-VALUES day-of-week offset tables to snap any date to the
+    prior Saturday\t\nDXCBDSUP\tCalls F6ADDF6 to get DOWSUB (1=Sun … 7=Sat), then
+    applies a SUBTRAHEND/ADDVALUE table to step back to the preceding Saturday from
+    a Julian day number\t\nDXCBDA2R\tParagraph 1300-GET-PREV-WEEKEND-DATE computes
+    the previous weekend date using month-length addends\t\nUIMB0248 / UIMI0248\t\
+    Computes REM(INTEGER-OF-DATE, 7) — only triggers weekly report when result = 6
+    (Saturday); non-Saturday dates silently skip the weekly report path\t\nUIMI0443\t
+    Derives the certification week FROM date by subtracting 6 days from the CWE TO
+    date — implicitly assumes CWE is Saturday, producing a Sunday start\t\nQCREC3E\t
+    Computes expected CWE by adding 6 days to claim date (Sunday) → Saturday\t\nDXCBD65R\t
+    Adds day-of-week offsets to advance to the next Saturday; special policy rule:
+    if base year begin date itself falls on Saturday (DOWSUB=7), it advances 7 days
+    to the following Saturday rather than using the same day\t\nView more\nThe Commented-Out
+    Guard\n\nThe closest thing to a runtime enforcement check was in UIMB0248. The
+    BRE analysis describes a \"confirm the week-ending date is a Saturday\" validation
+    rule, but the overview document explicitly notes :\n00_ca7_daily_over...\n\n\"\
+    the corresponding guard in UIMB0248 source (IF WS-WEEKDAY NOT = 'SATURDAY' ...,
+    lines 014650–014670) is commented out.\"\n\nThis means the validation exists in
+    the source code but is inactive. UIMB0248 simply branches on the Saturday path
+    and silently does nothing for non-Saturday inputs — it doesn't reject them.\n\n\
+    What You Can Point An Engineer To\nFor the clearest derivation logic: DXCBDSUP
+    — its CERT-SCHEDULE-CHECK paragraph has a full DOWSUB → SUBTRAHEND/ADDVALUE table
+    that walks any payment date back to the preceding Saturday, with Julian-day arithmetic
+    and leap-year handling.\nDXCBDSUP.md\nDXCBDSUP.md\nFor the \"why no guard?\" context:
+    00_ca7_daily_overview.md and the UIMB0248 source — the guard existed but was commented
+    out.\n00_ca7_daily_over...\nFor the policy rule: DXCBD65R — explicitly labeled
+    as a Policy Rules entry: \"Saturday is Never Used as the Same-Day Week Ending
+    Date\".\nDXCBD65R.md\nCoverage Caveat\n\nThis answer is bounded by the programs
+    in the knowledge base. Programs, jobs, or streams outside the held slice (e.g.,
+    CICS online screens, IVR capture, or money-movement processes) may handle it differently,
+    so a universal \"Saturday is always enforced system-wide\" claim cannot be confirmed
+    from the knowledge base alone. Within the documented batch programs, Saturday
+    is derived by construction in every case, but not validated at runtime in any.\n\
+    \nWould you like to explore any of these further?\n\nDeep dive into DXCBDSUP's
+    CERT-SCHEDULE-CHECK\n\nExamine UIMB0248's Saturday logic\n\nDXCBD65R base-year
+    Saturday policy"
+- id: v5-Q5
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe knowledge base
+    has limited coverage of the specific \"yearly SOIL on-request control-card run\"\
+    \ you're asking about. Here's what is documented and what isn't:\n\nWhat the Knowledge
+    Base Says\n\nThe terminology glossary (06_terminology_glossary.md) describes SOIL
+    as, among other things, a \"yearly on-request control-card run\".\n06_terminology_gl...\n\
+    \ The key phrase is on-request — this indicates it is not on a fixed automated
+    CA-7 schedule but is instead manually initiated (DEMANDed) by operations when
+    the yearly cycle calls for it. The glossary does not document a specific calendar
+    date or schedule trigger.\n\nWhat the B040 Control Card Looks Like\n\nThe B040-DATE-CONTROL-CARD
+    structure (from VERFYUI2.cbl.csv) includes annual-period fields that would need
+    to be updated for a yearly run :\nVERFYUI2.cbl.csv\nVERFYUI2.cbl.csv\n\nB040-ANNUAL-BEGIN-DATE
+    — 9(8), position 49, \"Annual beginning date for yearly processing\"\nB040-ANNUAL-ENDING-DATE
+    — 9(8), position 57, \"Annual ending date for yearly processing\"\n\nEvery SOIL
+    batch program (DXCRR05E, DXCRR78E, etc.) reads this control card from SYSIN at
+    initialization and loads all date fields — daily, weekly, monthly, quarterly,
+    and annual — into working storage.\nUIMB0059.md\nUIMI0061.md\nDXCBD134.md\n\n\
+    What the Daily SOIL Jobs Document (for Reference)\n\nThe documented daily SOIL
+    jobs (ZLPD02U0–ZLPD02U9 for adjustment/balance processing, ZLPD09U0–ZLPD09U9 for
+    balance reconciliation) follow a clear prerequisite pattern before execution :\n\
+    ZLPD02U0.md\nZLPD02U2.md\nZLPD02U3.md\n\nIDCAMS VERIFY (mandatory, unconditional
+    first gate) — verifies three VSAM files: the IMS database data component (e.g.,
+    LOPD0002), the index component (LOPX0002), and the business codes reference table
+    (VSAM.CODES.CLUSTER), using the VERIFY03 control card from the production control
+    library\nAll three must return RC=0 or all downstream SOIL processing is blocked\n\
+    IMS databases must be locked with exclusive access; CODES can be shared\nThe DATECARD
+    control card with correct date values must be supplied via SYSIN\nWhat Is NOT
+    in the Knowledge Base\n\nThe knowledge base does not document:\n\nWhen exactly
+    the yearly on-request SOIL run is triggered (e.g., calendar year-end, state fiscal
+    year-end, or at Treasury's request)\nThe specific job name or job stream for the
+    yearly run (as distinct from the daily ZLPD02U* / ZLPD09U* jobs)\nThe operator
+    procedure for preparing and submitting the yearly run — specifically, how the
+    B040-ANNUAL-BEGIN-DATE and B040-ANNUAL-ENDING-DATE values are set and who approves
+    them\nWhether the yearly run uses the same DXCRR05E/DXCRR78E programs with different
+    date-card parameters, or a different program entirely\n\nThese details live in
+    the operations runbook and the CA-7 DEMAND procedures, which are outside the held
+    documentation.\n\nRecommendation\n\nThis is an area where you'd need to consult
+    with the operations team or scheduling SME who manages the CA-7 DEMAND queue and
+    the DATECARD maintenance procedures. The pattern for the daily SOIL jobs (VSAM
+    VERIFY → exclusive IMS lock → DATECARD via SYSIN → DXCRR05E/DXCRR78E execution)
+    is well-documented and likely applies to the yearly run as well, but confirming
+    that — and the timing and operator checklist — requires the ops runbook.\n\nWould
+    you like to explore a related SOIL topic?\n\nDaily SOIL job flow step-by-step\n\
+    \nB040 control card structure detail\n\nDXCRR05E program logic deep dive"
+- id: v5-Q6
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nI have all the source-level
+    detail I need from NOPAYADD.txt and NOPAYADD.md in the Daily CA-7 space. Let me
+    synthesize a comprehensive test suite grounded in the actual program constants
+    and logic.\n\nProvenance note: Every constant, field name, field size, delimiter,
+    88-level value, and paragraph name below is copied from the retrieved NOPAYADD.txt
+    source code (COBOL source, LIBRMASTRALL / CA-7 daily schedule slice). The test
+    case expected results are derived from the source logic — specifically from paragraphs
+    1100-PROCESS-ADDRESS, 1000-MAIN-PROCESSING, 200-HSKG, 9000-READ, and 300-WRAP-UP
+    — and should be confirmed against actual program execution before being treated
+    as an acceptance baseline. All sample data is synthetic.\n\nNOPAYADD Test Suite
+    — Record Handling\n\nNOPAYADD Test Suite — Record Handling\n\nProgram: NOPAYADD
+    (COBOL II Batch, LIBRMASTRALL) Purpose: Reformat the combined address field in
+    NOPAY records (splitting at / delimiter) and write reformatted records to the
+    output file before the FINALIST process. Sources: NOPAYADD.txt (source), NOPAYADD.md
+    (business rules) — Daily CA-7 space Provenance: Expected outputs are derived from
+    source paragraphs (1100-PROCESS-ADDRESS, 1000-MAIN-PROCESSING, 300-WRAP-UP). Confirm
+    against actual execution.\n\nKey Constants & Field Sizes (from WORKING-STORAGE
+    and FD)\n\nItem\n\n\t\n\nSource Definition\n\n\t\n\nNotes\n\n\nHOLD-STREET\tPIC
+    X(30)\tMax street length; part of AREA1\nHOLD-CITY\tPIC X(15)\tMax city length;
+    part of AREA1\nADDR-LINE1\tPIC X(30)\tOutput address line 1 (street)\nADDR-LINE2\t
+    PIC X(30)\tOutput address line 2 (city/state/zip)\nTWO-SPACES\tPIC XX\tSTRING
+    delimiter for city trimming\nONE-SPACE\tPIC X\tSTRING delimiter for state trimming;
+    also inserted as separator\nNOPAYIN-ADDRESS-SEG01-FORMAT\tPIC X(44)\tCombined
+    input address field\nNOPAYIN-STATE\tPIC XX\t2-char state code\nNOPAYIN-ZIP-FIRST-FIVE\t
+    PIC 9(5)\tFirst 5 digits of ZIP; part of NOPAYIN-ZIP-PLUS-FOUR\nNOPAYIN-ZIP-LAST-FOUR\t
+    PIC 9(4)\tZIP+4 portion — excluded from output\nRECS-WRITTEN\tPIC 9(7) VALUE ZERO\t
+    Records-written counter; max 9,999,999\nEND-FLAG / END-OF-FILE\tPIC X / 88-level
+    VALUE 'Y'\tEOF sentinel\nNOPAYIN-RECORD-TYPE 88-levels\t'1'=100% offset; '2'=pended
+    week; '3'=other payment; '4'=current CWE change; '5'=UI claim is BYE; '6'=WW credit\t
+    Not used by NOPAYADD logic, but present in the record\nRECORDING MODE\tF (fixed-length)
+    on both FDs\tRecord length: 281 bytes (post-Y2K)\nLow-value cleansing\tINSPECT
+    ADDR-LINE1 REPLACING ALL LOW-VALUES BY SPACES (same for LINE2)\tAdded by R. Blumenfeld,
+    July 2009\nSummary messages\t'RESULTS OF NOPAYADD EXECUTION FOLLOWS;', 'THE #
+    OF RECORDS PROCESSED WAS ', 'END OF REPORT////////////////////////'\tExact strings
+    from 300-WRAP-UP\nTC-01: Happy Path — Standard Address with / Delimiter\n\nObjective:
+    Verify normal address splitting, city/state/ZIP formatting, and record count.\n\
+    \nInput (NOPAYIN-FILE — 1 record):\n\nField\n\n\t\n\nValue\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t\
+    '123 MAIN ST/NEWARK ' (44 chars, padded)\nNOPAYIN-STATE\t'NJ'\nNOPAYIN-ZIP-FIRST-FIVE\t\
+    07102\nNOPAYIN-ZIP-LAST-FOUR\t1234\nNOPAYIN-RECORD-TYPE\t'1' (ONE-HUNDRED-PERCENT-OFFSET)\n\
+    All other fields\tValid synthetic values\n\nExpected Output (NOPAYOUT-FILE — 1
+    record):\n\nField\n\n\t\n\nExpected Value\n\n\t\n\nDerivation\n\n\nADDR-LINE1\t\
+    '123 MAIN ST ' (30 chars)\tUNSTRING extracts left of / → HOLD-STREET → ADDR-LINE1\n\
+    ADDR-LINE2\t'NEWARK NJ 07102 ' (30 chars)\tSTRING: HOLD-CITY delimited by TWO-SPACES
+    + ONE-SPACE by SIZE + NOPAYIN-STATE delimited by ONE-SPACE + ONE-SPACE by SIZE
+    + NOPAYIN-ZIP-FIRST-FIVE + ONE-SPACE by SIZE\nAll non-address fields\tIdentical
+    to input\tMOVE NOPAYIN-RECORD TO NOPAYOUT-RECORD preserves all before reformatting\n\
+    \nExpected SYSOUT (from 300-WRAP-UP):\n\n*************************************\n\
+    RESULTS OF NOPAYADD EXECUTION FOLLOWS;\n*************************************\n\
+    THE # OF RECORDS PROCESSED WAS 0000001\n*************************************\n\
+    END OF REPORT////////////////////////\n\nTC-02: Empty Input File\n\nObjective:
+    Verify the program handles an empty NOPAYIN-FILE — no records written, counter
+    stays at zero, summary still displays.\n\nInput: 0 records in NOPAYIN-FILE.\n\n\
+    Expected:\n\nNOPAYOUT-FILE contains 0 records\nEND-FLAG set to 'Y' on the priming
+    read in 200-HSKG; 1000-MAIN-PROCESSING loop is never entered\nSYSOUT shows RECS-WRITTEN
+    = 0000000\nTHE # OF RECORDS PROCESSED WAS 0000000\n\nTC-03: No / Delimiter in
+    Address Field\n\nObjective: Exercise the UNSTRING fallback — when NOPAYIN-ADDRESS-SEG01-FORMAT
+    has no /, the entire 44-char field goes into HOLD-STREET (truncated to 30 chars)
+    and HOLD-CITY stays at its initialized value (spaces, from INITIALIZE AREA1).\n\
+    \nInput:\n\nField\n\n\t\n\nValue\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t'456 ELM AVENUE
+    APT 2B SUITE 100XTRA' (44 chars, no /)\nNOPAYIN-STATE\t'NY'\nNOPAYIN-ZIP-FIRST-FIVE\t\
+    10001\n\nExpected:\n\nField\n\n\t\n\nExpected Value\n\n\t\n\nRationale\n\n\nADDR-LINE1\t\
+    '456 ELM AVENUE APT 2B SUITE 10' (30 chars — truncated)\tUNSTRING puts first 30
+    chars into HOLD-STREET (PIC X(30)); chars 31–44 are lost\nADDR-LINE2\t'NY 10001
+    ' (30 chars)\tHOLD-CITY is all spaces after INITIALIZE AREA1; STRING starts with
+    city delimited by TWO-SPACES (immediate hit — produces nothing), then ONE-SPACE,
+    then state, ONE-SPACE, ZIP, ONE-SPACE. Note: Because HOLD-CITY is all spaces,
+    the first double-space hit is at position 1 — zero city bytes are emitted. Result
+    starts with the first ONE-SPACE, then NY, then space, then 10001, then space\n\
+    \n⚠ Edge-case alert: The exact behavior of STRING … HOLD-CITY DELIMITED BY TWO-SPACES
+    when HOLD-CITY is all spaces depends on whether the COBOL runtime finds the delimiter
+    at position 1 (emitting zero bytes) or at position 2 (emitting one space). Verify
+    against actual execution.\n\nTC-04: Address Field Contains Embedded LOW-VALUES
+    (Null Characters)\n\nObjective: Verify the INSPECT … REPLACING ALL LOW-VALUES
+    BY SPACES cleansing step (added July 2009 per source comment).\n\nInput:\n\nField\n\
+    \n\t\n\nValue\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t'789 OAK' + X'00' + 'DR/TRENTON'
+    + padding (44 chars total)\nNOPAYIN-STATE\t'NJ'\nNOPAYIN-ZIP-FIRST-FIVE\t08608\n\
+    \nExpected:\n\nField\n\n\t\n\nExpected Value\n\n\nADDR-LINE1\t'789 OAK DR ' —
+    null between OAK and DR replaced with space\nADDR-LINE2\t'TRENTON NJ 08608 ' —
+    clean (no nulls expected in city/state/ZIP path, but INSPECT covers it if present)\n\
+    TC-05: Multiple Records — Counter Increment\n\nObjective: Verify RECS-WRITTEN
+    increments by 1 per record (ADD 1 TO RECS-WRITTEN in 1000-MAIN-PROCESSING) and
+    the summary reflects the total.\n\nInput: 3 records in NOPAYIN-FILE, each with
+    a valid STREET/CITY address.\n\nExpected:\n\nNOPAYOUT-FILE contains exactly 3
+    records\nEach record independently formatted (AREA1 and NOPAYOUT-RECORD re-initialized
+    per record via INITIALIZE AREA1, NOPAYOUT-RECORD)\nSYSOUT: THE # OF RECORDS PROCESSED
+    WAS 0000003\nTC-06: Long Street Fills Entire HOLD-STREET (30 chars) Before /\n\
+    \nObjective: Test the boundary where the street portion of the address is exactly
+    30 characters — the full capacity of HOLD-STREET PIC X(30).\n\nInput:\n\nField\n\
+    \n\t\n\nValue\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t'123456789012345678901234567890/CITY'
+    + padding to 44\nNOPAYIN-STATE\t'PA'\nNOPAYIN-ZIP-FIRST-FIVE\t19101\n\nExpected:\n\
+    \nField\n\n\t\n\nExpected Value\n\n\nADDR-LINE1\t'123456789012345678901234567890'
+    (exactly 30 chars)\nADDR-LINE2\t'CITY PA 19101 '\nTC-07: City Name Exactly 15
+    Characters (Full HOLD-CITY Capacity)\n\nObjective: Test the boundary where HOLD-CITY
+    PIC X(15) is fully used — the double-space trimming delimiter should not be found
+    within the city name if all 15 positions are non-space.\n\nInput:\n\nField\n\n\
+    \t\n\nValue\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t'100 BROAD ST/POINT PLEASANT B'
+    + padding (city portion = 'POINT PLEASANT ' → 15 chars exactly)\nNOPAYIN-STATE\t\
+    'NJ'\nNOPAYIN-ZIP-FIRST-FIVE\t08742\n\nExpected:\n\nField\n\n\t\n\nExpected Value\n\
+    \n\nADDR-LINE2\t'POINT PLEASANT NJ 08742 '\nTC-08: All Six RECORD-TYPE Values
+    Pass Through\n\nObjective: NOPAYADD does not filter or branch on NOPAYIN-RECORD-TYPE
+    — all six 88-level values should produce output records identically.\n\nInput:
+    6 records, one for each NOPAYIN-RECORD-TYPE value:\n\nRecord\n\n\t\n\nRECORD-TYPE\n\
+    \n\t\n\n88-level Name\n\n\n1\t'1'\tONE-HUNDRED-PERCENT-OFFSET\n2\t'2'\tPENDED-WEEK\n\
+    3\t'3'\tOTHER-PAYMENT\n4\t'4'\tCURRENT-CWE-CHANGE\n5\t'5'\tUI-CLAIM-IS-BYE\n6\t\
+    '6'\tWW-CREDIT\n\nExpected:\n\nAll 6 produce output records with correctly reformatted
+    addresses\nNOPAYOUT-RECORD-TYPE in each output record matches its input value\n\
+    RECS-WRITTEN = 0000006\nTC-09: Street Address with Multiple / Characters\n\nObjective:
+    UNSTRING with a single DELIMITED BY '/' splits at the first / occurrence. The
+    second receiving field (HOLD-CITY) gets everything between the first and second
+    / — characters after the second / are discarded (COBOL UNSTRING behavior with
+    exactly two INTO targets and no POINTER/TALLYING).\n\nInput:\n\nField\n\n\t\n\n\
+    Value\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t'100 N/S HIGHWAY/EDISON ' (44 chars)\n\
+    NOPAYIN-STATE\t'NJ'\nNOPAYIN-ZIP-FIRST-FIVE\t08817\n\nExpected:\n\nField\n\n\t\
+    \n\nExpected Value\n\n\t\n\nRationale\n\n\nADDR-LINE1\t'100 N '\tFirst UNSTRING
+    target gets text before the first /\nADDR-LINE2\t'S HIGHWAY NJ 08817 '\tSecond
+    target gets text between first and second / → 'S HIGHWAY'; city portion trimmed
+    at double-space\n\n⚠ Note: The street name is split incorrectly because the address
+    itself contains /. This is a known data-quality concern, not a program bug — NOPAYADD
+    has no special handling for addresses containing the delimiter character. Flag
+    for upstream data validation.\n\nTC-10: Address Field is All Spaces (No Street
+    or City Data)\n\nObjective: Test behavior when NOPAYIN-ADDRESS-SEG01-FORMAT is
+    entirely spaces (44 spaces, no /).\n\nInput:\n\nField\n\n\t\n\nValue\n\n\nNOPAYIN-ADDRESS-SEG01-FORMAT\t
+    44 spaces\nNOPAYIN-STATE\t'NJ'\nNOPAYIN-ZIP-FIRST-FIVE\t07001\n\nExpected:\n\n\
+    Field\n\n\t\n\nExpected Value\n\n\t\n\nRationale\n\n\nADDR-LINE1\t30 spaces\t\
+    UNSTRING puts all spaces into HOLD-STREET (no / found) → ADDR-LINE1 = spaces\n\
+    ADDR-LINE2\t'NJ 07001 ' (or ' NJ 07001...')\tHOLD-CITY = spaces from INITIALIZE;
+    STRING emits city trimmed at double-space (zero or one byte), then space, state,
+    space, ZIP, space\n\n⚠ Verify actual byte-level output — the leading content of
+    ADDR-LINE2 depends on how many space-bytes the COBOL STRING emits before the delimiter
+    fires on HOLD-CITY.\n\nTC-11: Non-Address Fields Preservation (Full Record Fidelity)\n\
+    \nObjective: Verify that the MOVE NOPAYIN-RECORD TO NOPAYOUT-RECORD in 1100-PROCESS-ADDRESS
+    preserves all non-address fields byte-for-byte.\n\nInput: A single record with
+    distinctive values in every field:\n\nField\n\n\t\n\nTest Value\n\n\nNOPAYIN-SSN\t
+    +123456789 (COMP-3)\nNOPAYIN-PC\t+001 (COMP-3)\nNOPAYIN-WBR\t0500.00\nNOPAYIN-WBA\t\
+    0400.00\nNOPAYIN-CLAIM-BALANCE\t+000012345.67 (COMP-3)\nNOPAYIN-EARNINGS-AMOUNT1\t\
+    0100.50\nNOPAYIN-SEX\t'M'\nNOPAYIN-NAME-SEG01-FORMAT\t'DOE JOHN ' (30 chars)\n\
+    NOPAYIN-SUPPRESSION\t'NO'\nNOPAYIN-HEALTH\t0075.00\n\nExpected: Every output field
+    except ADDR-LINE1 and ADDR-LINE2 must exactly match the corresponding input field
+    values above.\n\nTC-12: AREA1 Re-Initialization Between Records\n\nObjective:
+    Confirm that residual data from Record N's HOLD-STREET / HOLD-CITY does not bleed
+    into Record N+1's output, because INITIALIZE AREA1, NOPAYOUT-RECORD is called
+    at the top of 1100-PROCESS-ADDRESS for every record.\n\nInput (2 records):\n\n\
+    Record\n\n\t\n\nADDRESS-SEG01-FORMAT\n\n\t\n\nSTATE\n\n\t\n\nZIP-FIRST-FIVE\n\n\
+    \n1\t'999 VERY LONG STREET NAME HERE/LONGBEACHCITY '\t'CA'\t90802\n2\t'1 A ST/NY
+    ' (short)\t'NY'\t10001\n\nExpected for Record 2:\n\nField\n\n\t\n\nExpected Value\n\
+    \n\nADDR-LINE1\t'1 A ST ' — no remnants of '999 VERY LONG…'\nADDR-LINE2\t'NY NY
+    10001 ' — no remnants of 'LONGBEACHCITY' or 'CA' or 90802\nSummary: Test Matrix\n\
+    \nTC\n\n\t\n\nScenario\n\n\t\n\nKey Verification\n\n\n01\tHappy path / split\t
+    Standard address formatting\n02\tEmpty input file\t0 records, loop skipped, summary
+    shows 0\n03\tNo / in address\tEntire field → street; city empty\n04\tEmbedded
+    LOW-VALUES\tINSPECT replaces nulls with spaces\n05\tMultiple records\tCounter
+    increments correctly\n06\t30-char street before /\tHOLD-STREET boundary\n07\t\
+    15-char city\tHOLD-CITY boundary\n08\tAll 6 RECORD-TYPE values\tNo filtering;
+    all pass through\n09\tMultiple / in address\tUNSTRING splits at first / only\n\
+    10\tAll-spaces address\tDegenerate input handling\n11\tNon-address field fidelity\t
+    Full record preservation\n12\tAREA1 re-init between records\tNo cross-record data
+    bleed\n\nThis test suite is synthesized from the retrieved NOPAYADD.txt source
+    code and NOPAYADD.md business rules in the Daily CA-7 space.\nNOPAYADD.md\nNOPAYADD.txt\n\
+    \ Every constant, field size, 88-level value, paragraph name, and DISPLAY string
+    is copied directly from the source. The expected outputs are derived from the
+    1100-PROCESS-ADDRESS, 1000-MAIN-PROCESSING, and 300-WRAP-UP paragraphs — they
+    should be validated against actual program execution before being used as acceptance
+    criteria.\n\nA few callouts on tricky edge cases:\n\nTC-03 and TC-10 (no delimiter
+    / all-spaces address): The exact byte-level behavior of STRING … HOLD-CITY DELIMITED
+    BY TWO-SPACES when HOLD-CITY is all spaces depends on where the COBOL runtime
+    locates the first double-space. Recommend verifying these against the actual IBM
+    COBOL II runtime.\nTC-09 (multiple / characters): This exposes a data-quality
+    vulnerability — the program has no way to distinguish an address containing /
+    from the delimiter. Worth flagging for upstream validation.\nTC-04: The INSPECT
+    … REPLACING ALL LOW-VALUES BY SPACES was a 2009 patch (per source comment). This
+    test confirms that fix is operational.\nWhat would you like to do next?\n\nGenerate
+    as DOCX\n\nExpand the test suite\n\nGenerate sample test data file"
+- id: v5-Q7
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere's a standalone
+    handoff summary for the incoming engineer, synthesized from the ZUMDA1R1.md, ZUMDA1R1-jcl.json,
+    DXCB103U-cbl.json, and UIMI0440-cbl.html documents across the Daily CA-7 and DailyUI
+    knowledge spaces.\n\nHandoff Summary — Daily UI Check Reprint Flow (ZUMDA1R1 /
+    DXCB103U)\n\nHandoff Summary — Daily UI Check Reprint Flow\n\nProvenance: This
+    document is synthesized from multiple knowledge-base sources: ZUMDA1R1.md, ZUMDA1R1-jcl.json
+    (Daily CA-7 space), DXCB103U-cbl.json, DXCB103U-cbl.html, UIMI0440-cbl.html (DailyUI
+    space). All program names, dataset names, step names, record sizes, and business
+    rules are cited from those documents. Items marked ⚠ are gaps or areas needing
+    SME verification.\n\n1. What This Flow Does (Business Context)\n\nJob ZUMDA1R1
+    is a CA-7 daily-scheduled batch job that processes UI (Unemployment Insurance)
+    Non-Direct Deposit check payments. \"Non-Direct\" means paper checks — not direct
+    deposit / electronic banking. The job:\n\nValidates the input payment file.\n\
+    Generates formatted 806-byte laser-check print records.\nBacks up the output to
+    tape (permanent) and disk (weekly rolling).\nCopies today's reprint-eligible records
+    into a 5-day reprint VSAM cluster.\n\nThe final output feeds the FINALIST check-printing
+    process (physical laser checks mailed to claimants). The reprint cluster enables
+    reprinting checks for up to 5 days after issuance.\n\n2. Job: ZUMDA1R1 — Step-by-Step\n\
+    \nJCL location: JCLIBALL library, CA-7 daily schedule\nJob class: 7 | MSGCLASS:
+    J | Account: (Y2K20,P) | LOGONID: PLA2LDX\n\nStep\n\n\t\n\nStepname\n\n\t\n\n\
+    Program / Utility\n\n\t\n\nPurpose\n\n\t\n\nConditional?\n\n\n1\tIEFBR14\tIEFBR14\t
+    Pre-processing cleanup — deletes stale LAK2LDXP.ZUMDA1R1.UI.CHKS.DTL from any
+    prior run. No error if file doesn't exist.\tUnconditional\n2\tTEST1\tIDCAMS REPRO\t
+    Data-presence check — extracts exactly 1 record from LAK2LDXP.ZUMDA1R1.NONDD.DTL
+    to a temp file (FB, LRECL=323). Confirms input file is accessible and non-empty.\t
+    Skipped if Step 1 RC ≠ 0\n3\tVERIFYUI\tVERFYUI2\tValidation — validates all Non-Direct
+    payment records against the DATECARD processing date. Produces a printed verification
+    report.\tSkipped if any prior RC ≠ 0\n4\tUIMI0063\tUIMI0440 (via DB2 plan UIMI0440)\t
+    Check generation — the main workhorse. Reads Non-Direct payment records, cross-references
+    VSAM code tables and reprint data, and writes formatted 806-byte check records
+    to UI.CHKS.DTL. Also writes reprint records to the UIVSAM VSAM cluster.\tSkipped
+    if any prior RC ≠ 0\n5\tEMPTYIT\tIDCAMS REPRO\tFallback — if Step 4 returned RC
+    ≠ 0, creates an empty UI.CHKS.DTL placeholder (FB, LRECL=806, 250 cyl primary)
+    so backup steps don't fail on a missing file.\tRuns only if Step 4 RC ≠ 0\n6\t
+    BACKUP1\tSORT (copy)\tPermanent tape backup — copies UI.CHKS.DTL as-is (no sort/filter)
+    to GDG LAK2LDXP.ZUMDA1R1.UI.CHKS.BCKUP(+1) on SILO tape. EXPDT=99000 (never expires).\t
+    Always runs — unconditional\n7\tBACKUP2\tSORT (copy)\tWeekly disk backup — copies
+    UI.CHKS.DTL as-is to GDG LAK2LDXP.ZUMDA1R1.UI.WKLY.BCKUP(+1) on SYSALLDA disk.
+    Rolling GDG retention.\tAlways runs — unconditional\n8\tDXCB103U\tDXCB103U\tReprint
+    cluster update — reads primary UIVSAM and copies records into the 5-day UIVSAM5
+    cluster, date-stamping each with today's run date.\tSkipped if any prior RC ≠
+    0\nKey Conditional Logic\nSteps 2–4 form a gated pipeline: any failure short-circuits
+    to the backup steps.\nBackups (Steps 6–7) always run — even if upstream steps
+    failed — so there's always something on tape/disk (even if it's an empty placeholder).\n\
+    Step 8 (DXCB103U) only runs if the entire pipeline succeeded (all prior RC = 0).
+    This is a safety mechanism — if checks weren't generated, you don't want to mark
+    records as reprinted.\n3. Key Datasets\n\nDataset Name (HLQ:\n\n\t\n\nLAK2LDXP\n\
+    \n\t\n\n)\n\n\t\n\nType\n\n\t\n\nLRECL\n\n\t\n\nPurpose\n\n\nZUMDA1R1.NONDD.DTL\t
+    Sequential (FB)\t323\tInput — Non-Direct Deposit payment records from upstream\t\
+    \t\nPROD.CNTLLIB(DATECARD)\tPDS member\t—\tDate control card (processing date
+    in MMDDYYYY + week-ending, month, quarter, annual dates)\t\t\nVSAM.CODES.CLUSTER\t
+    VSAM (KSDS)\t—\tCode reference table — payment type codes, benefit program codes,
+    status codes\t\t\nVSAM.UIVSAM.CLUSTER\tVSAM (KSDS)\t—\tPrimary UI Reprint cluster
+    — keyed by SSN + Sequence\t\t\nVSAM.UIVSAM5.CLUSTER\tVSAM (KSDS)\t—\tSecondary
+    5-day UI Reprint cluster — accumulates 5 days of reprint records\t\t\nZUMDA1R1.UI.CHKS.DTL\t
+    Sequential (FB)\t806\tOutput — formatted check print records (deleted/recreated
+    each run)\t\t\nZUMDA1R1.UI.CHKS.BCKUP\tGDG (tape)\t806\tPermanent tape archive
+    — never expires\t\t\nZUMDA1R1.UI.WKLY.BCKUP\tGDG (disk)\t806\tWeekly disk backup
+    — rolling retention\t\t\n4. Program: UIMI0440 — Check Generation (Step 4)\n\n\
+    This is the heaviest program in the flow.\n\nType: Batch COBOL, DB2 + VSAM + FILE
+    access, no MQ\nDB2 Plan: UIMI0440\nExecution: Via TSO batch (IKJEFT01) under step
+    UIMI0063\nWhat it does (60 documented functionalities):\nOpens the Non-Direct
+    payment file (CHECKREC DD), date control card (DATEIN), VSAM code table (CODELOOP),
+    and reprint VSAM (REPRINT).\nFor each eligible payment record (Print Indicator
+    = 1, 0, or blank AND Void Indicator = 0):\nFormats claimant name, address, benefit
+    amounts, deductions, tax withholding.\nLooks up local office return address from
+    Table 112 (via Table 175 for Regional offices).\nDetermines office heading: REGIONAL
+    AUTHORIZATION CENTER, INTERSTATE CLAIMS OFFICE (offices 997/999), or default UNEMPLOYMENT
+    CLAIMS OFFICE.\nAssigns benefit type codes: EB, EC, TX, TY, TZ, EU, WF, SE — with
+    a priority cascade (SEA overrides WFD overrides primary type).\nHandles certification
+    code messaging (Benefits Exhausted for code '1', Benefit Year Ended for code '2',
+    TUC final payment messages).\nAssigns check numbers, bank account numbers, ZIP+4
+    barcodes.\nWrites 806-byte records to the primary output (PRNTDATA = UI.CHKS.DTL),
+    a clone output, and a reprint output.\nSuppresses secondary output (PRNTDAT2).\n\
+    On failure:\n\nThe UI.CHKS.DTL file is automatically deleted (JCL DISP=DELETE
+    on abnormal) — no partial check data is ever retained.\n\n5. Program: DXCB103U
+    — Reprint Cluster Update (Step 8)\nType: Batch COBOL, VSAM only, no DB2, no MQ\n\
+    Source member: DXCB103U.cbl (displays as DXCB103R in its own banners — this is
+    the PROGRAM-ID vs. the member name)\nProcessing Logic:\nHousekeeping: Reads the
+    DATECARD from SYSIN. Extracts daily date (B040-DAILY-DATE) in MMDDYYYY format,
+    then reformats it to YYYYMMDD as DATE-RUN.\nOpen files:\nREPRINT-FILE (primary
+    UIVSAM cluster) — opened INPUT mode for sequential read.\nREPRINT5-FILE (5-day
+    UIVSAM5 cluster) — opened EXTEND mode (appends after existing records).\nPositioning:
+    Sets REPRINT-SSN and REPRINT-SEQUENCE to zero, issues START to position at the
+    first record with a key > 0 (i.e., beginning of file).\nIf START fails: displays
+    'INVALID RETURN CODE ON START FOR FILE REPRINT' + status code, closes both files,
+    and terminates immediately.\nRecord loop: For each record read from REPRINT:\n\
+    Copies SSN → REPRINT5-SSN (exact)\nCopies Sequence → REPRINT5-SEQUENCE (exact)\n\
+    Stamps DATE-RUN → REPRINT5-DATE (replaces any original date)\nCopies 806-char
+    data payload (REPRINT-REST → REPRINT5-REST, exact)\nWrites to REPRINT5 (append)\n\
+    Increments records-read and records-written counters\nOn write failure: Displays
+    severe error banner: 'PROBLEM EXISTS WITH REPRINT5 FILE', 'WRITE FAILED', 'CORRECT
+    AND RESTART'. Closes both files, terminates immediately.\nWrap-up: Displays completion
+    banner (DXCB103R COMPLETED NORMALLY), total records read, total records written.
+    Closes REPRINT-FILE first, then REPRINT5-FILE (strict order enforced).\nThe key
+    business rule:\n\nEvery record in UIVSAM5 is tagged with today's DATE-RUN. This
+    is how the system knows which records are reprintable for the current 5-day window
+    — older records beyond the window are excluded by date.\n\n6. Failure Scenarios
+    & Recovery\n\nFailure Point\n\n\t\n\nWhat Happens\n\n\t\n\nRecovery\n\n\nStep
+    1 (cleanup) fails\tSteps 2–4 skipped; backups run (will back up stale file if
+    it exists)\tInvestigate allocation/catalog issue; rerun\nStep 2 (TEST1) fails\t
+    Means NONDD.DTL is empty or inaccessible; Steps 3–4 skipped\tCheck upstream job
+    that produces NONDD.DTL\nStep 3 (VERFYUI2) fails\tValidation failure; Step 4 skipped\t
+    Review verification report in SYSOUT\nStep 4 (UIMI0440) fails\tUI.CHKS.DTL is
+    auto-deleted; EMPTYIT creates empty placeholder; backups run (empty file); Step
+    8 skipped\tCheck DB2 availability, VSAM status, SYSOUT messages\nStep 4 returns
+    RC=0 but no records\tEMPTYIT runs (creates empty file); backups run; Step 8 still
+    executes\tNormal — just means no checks this cycle\nStep 8 (DXCB103U) — START
+    fails\tImmediate termination with status code displayed\tCheck UIVSAM cluster
+    integrity (VERIFY/REPRO)\nStep 8 (DXCB103U) — WRITE fails\tImmediate termination,
+    both files closed\tCheck UIVSAM5 cluster space/integrity; rerun Step 8 only\n\
+    7. Upstream / Downstream Dependencies\nUpstream (what feeds this job):\nLAK2LDXP.ZUMDA1R1.NONDD.DTL
+    — produced by the upstream payment processing pipeline (⚠ the specific upstream
+    job is not documented in the held knowledge base; check CA-7 predecessors for
+    ZUMDA1R1)\nLAK2LDXP.PROD.CNTLLIB(DATECARD) — shared date control card used across
+    many daily jobs\nVSAM.CODES.CLUSTER and VSAM.UIVSAM.CLUSTER — shared VSAM resources\n\
+    Downstream (what consumes this job's output):\nUI.CHKS.DTL → feeds the FINALIST
+    laser check printing process (⚠ the FINALIST job name and details are outside
+    the held knowledge base — it's in the check-print/money-movement domain)\nVSAM.UIVSAM5.CLUSTER
+    → consumed by CICS online reprint screens and/or subsequent batch reprint jobs
+    (⚠ specific consumers not documented in the held slice)\nZUMDA1R2 — a related
+    job visible in the DailyUI space that handles Direct Deposit payment processing
+    (separate from this Non-Direct flow), also using LAK2LDXP.ZUMDA1R1.* files\n⚠
+    Coverage Caveat:\n\nThe dependency picture above is bounded by the held knowledge
+    base. Dynamically called programs, operator-DEMANDed jobs, and manually triggered
+    streams may not appear. Check CA-7 demand/trigger relationships and the operations
+    runbook for the full picture.\n\n8. Key Things to Watch\n\nThe EMPTYIT safety
+    net: If UIMI0440 fails, the job creates an empty placeholder so backups succeed.
+    This means your tape/disk backups for that day contain zero records. If you see
+    a zero-byte backup generation, check whether UIMI0063 actually ran successfully.\n\
+    \nDate-stamping in DXCB103U: Every record written to UIVSAM5 gets today's DATE-RUN
+    in YYYYMMDD format. If the DATECARD is wrong (e.g., ops loaded yesterday's card),
+    reprints will have the wrong date window. Always verify the DATECARD matches the
+    processing date.\n\nUIVSAM5 is EXTEND mode: DXCB103U appends to UIVSAM5 — it does
+    not clear it. Older records accumulate over 5 days. ⚠ The purge/cleanup mechanism
+    for records older than 5 days is not documented in the held knowledge base. Ask
+    the operations team or SME about the UIVSAM5 maintenance job.\n\nProgram ID mismatch:
+    The source member is DXCB103U but the program's internal PROGRAM-ID (as shown
+    in its completion banner) is DXCB103R. This is normal — they're the same program.
+    Don't be confused by SYSOUT saying DXCB103R COMPLETED NORMALLY.\n\nRecord size:
+    NONDD.DTL = 323-byte FB records. UI.CHKS.DTL = 806-byte FB records. If you see
+    IEC messages about record length mismatches, check which file was accidentally
+    wired to the wrong DD.\n\nUIMI0440 is complex: It has 60+ documented functionalities
+    and 300+ business rules (benefit type cascades, certification code messaging,
+    regional/interstate office heading logic). Changes to this program should be treated
+    as high-risk. The arithmetic for earnings/pension offset calculations in UIMI0440
+    is inferred from source and should be confirmed with an SME before relying on
+    it for test cases.\n\n9. Source Documents for Further Reading\n\nDocument\n\n\t\
+    \n\nSpace\n\n\t\n\nWhat It Covers\n\n\nZUMDA1R1.md\tDaily CA-7\tJob-level flow,
+    step rules, mermaid diagrams\nZUMDA1R1-jcl.json\tDaily CA-7 / DailyUI\tFull 11-rule
+    business rules with Given/When/Then\nZUMDA1R1.txt\tDaily CA-7\tRaw JCL source\n\
+    DXCB103U-cbl.json\tDailyUI\tFull program documentation with 61 business rules\n\
+    DXCB103U-cbl.html\tDailyUI\tFlow diagram + summary\nUIMI0440-cbl.html\tDailyUI\t
+    60-functionality summary of check generation program\nUIMI0440-cbl.json\tDailyUI\t
+    300+ business rules for check formatting\nVERFYUI2-cbl.json\tDailyUI\tVerification
+    program documentation\n\nPrepared: September 1, 2026. Contact the LOOPS Engineering
+    Onboarding Specialist for follow-up questions.\n\nThis is a self-contained document
+    — your replacement won't need any prior chat context. A few notes on what it covers
+    and what it doesn't:\n\nWhat's in scope:\n\nThe complete 8-step ZUMDA1R1 job flow
+    with all conditional logic and fallback mechanisms\nUIMI0440 (check generation)
+    — role, inputs/outputs, benefit type cascade, office heading logic\nDXCB103U (reprint
+    cluster update) — full processing logic including date reformatting, VSAM positioning,
+    record mapping, and error handling\nAll key datasets with their types, record
+    lengths, and purposes\nFailure/recovery scenarios and operational watch items\n\
+    \nWhat's explicitly flagged as out-of-scope (knowledge base doesn't cover these):\n\
+    \nThe specific upstream job that produces NONDD.DTL\nThe downstream FINALIST check-print
+    job\nThe UIVSAM5 purge/maintenance mechanism\nThe UIMI0440 earnings/pension offset
+    arithmetic (inferred, not verified)\nWhat would you like to do next?\n\nGenerate
+    a downloadable DOCX\n\nDeep-dive on UIMI0440 check formatting logic\n\nExplore
+    upstream/downstream job dependencies"
+- id: v5-Q8
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe knowledge base
+    does not have jobs named ZLPDYOR1 through ZLPDYOR9 in either the CA-7 daily schedule
+    table or the job purpose index.\n01_schedule_job_t...\n05_job_purpose_in...\n\n\
+    What Is Documented\n\nThe closest match is a single job:\n\nZLPDYO99 — listed
+    in the CA-7 daily schedule under the LOP subsystem.\n01_schedule_job_t...\n However,
+    its JCL header purpose text is not captured in the job purpose index, and no detailed
+    JCL source or program documentation for it appears in the held knowledge base.\n\
+    Possible Explanations\n\nA few things to check before going further:\n\nNaming
+    typo or convention mismatch: The ZLPD* family in the daily schedule uses a 4-letter
+    function code after ZLPD (e.g., ZLPDWPR*, ZLPDVRU*, ZLPDEUR*). The pattern ZLPDYOR*
+    would imply function code YOR, which doesn't appear. Could the jobs be named something
+    similar? For example:\n\nZLPDYO99 (the documented one — possibly the \"99\" consolidation/cleanup
+    job for a ZLPDYO* series?)\nOr perhaps they exist under a different prefix entirely?\n\
+    \nMulti-database fan-out convention: Many LOOPS daily jobs use a 0–9 suffix to
+    split processing across the 10 IMS databases (DB00–DB09). If ZLPDYO* jobs exist,
+    they would follow this pattern. But without JCL source or purpose text in the
+    knowledge base, I can't describe what they do.\n\nOn-demand or recently added:
+    If these jobs were added after the CA-7 schedule snapshot (FSTRUC DOLDAILYD061526,
+    parsed 2026-08-14), they won't appear in the held data.\n01_schedule_job_t...\n\
+    \nRecommendation\n\nI'd suggest:\n\nCheck the CA-7 FSTRUC directly on the mainframe
+    for jobs matching ZLPDYOR* — the schedule listing would show their subsystem,
+    predecessors/successors, and trigger conditions.\nCheck the JCL library (JCLIBALL)
+    for members named ZLPDYOR1 through ZLPDYOR9 — the JCL header comments will have
+    the purpose line and the programs invoked.\nIf you can share the JCL or a job
+    name correction, I can search for the programs those steps execute and give you
+    the full breakdown.\nHow would you like to proceed?\n\nI'll look up the JCL and
+    come back\n\nTell me more about ZLPDYO99\n\nLet me verify the job names"

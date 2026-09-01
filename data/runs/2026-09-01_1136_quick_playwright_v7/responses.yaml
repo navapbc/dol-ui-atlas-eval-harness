@@ -1,0 +1,140 @@
+responses:
+- id: v7-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nGreat question.
+    The answer draws on several documented programs across the CICS and batch knowledge
+    bases. This is a synthesized explanation — no single document states the locking
+    rationale in one place, but the mechanisms and data dependencies are documented
+    in the source code analyses below.\n\nWhy the Lock Must Span Both Weeks\n\nIn
+    LOOPS, a claimant certifies for two weeks at once (a bi-weekly certification).
+    The CICS program LOAK025S processes both weeks sequentially within a single transaction,
+    using the PAYSUB indicator (1 = Week 1, 2 = Week 2) to loop through each week
+    and store the computed transaction codes in TX-UI-PAY1 and TX-UI-PAY2 respectively.\n\
+    LOAK025S-cbl.json\n Two locking mechanisms keep the claim data stable across both
+    weeks:\n\nSSN Lock — Acquired at session start (documented in LO9CC26P), this
+    prevents any other CICS transaction from processing the same claimant concurrently.
+    The program explicitly removes any stale SSN lock from a prior incomplete session
+    before acquiring a new one.\nLO9CC26P-cbl.json\nIMS GHU (Get Hold Unique) locks
+    — When LOAK025S or DXCD072S needs to modify a payment segment in LOOPDB02, it
+    retrieves the segment with an exclusive hold lock via GHU, which blocks any concurrent
+    modification until the update is committed.\nDXCD072S-cbl.json\n\nThese locks
+    are held across the processing of both weeks because of three critical data dependencies:\n\
+    \n1. Shared claim balance feeds final-payment detection. Week 2's logic checks
+    CLAIM-BAL + WBA1 × (PAYSUB − 2) = 0 and also TWA-CLMREM = 0 to decide whether
+    to assign the \"final payment\" transaction code (+13). Week 1's payment reduces
+    the claim balance, and Week 2 reads the result immediately. If the lock were dropped
+    between weeks, another transaction could change CLAIM-BAL in between, causing
+    Week 2 to miscalculate whether the balance is exhausted.\nLOAK025S-cbl.json\n\n\
+    2. Payment segment integrity during NINE-SEARCH. For first-compensable-week processing,
+    LOAK025S uses GHU to search LOOPDB02 for existing type-9/type-10 payment segments,
+    voids the old segment (void code = 3 via IMS REPL), and inserts a corrected replacement.
+    If the lock were released after Week 1, a concurrent transaction could see the
+    voided segment or insert conflicting payment data before Week 2 runs.\nLOAK025S-cbl.json\n\
+    \n3. Downstream consumers expect both PAY1 and PAY2 together. After the CICS transaction
+    commits, batch programs read the payment record as a unit:\n\nDXCBDSUP inspects
+    both TRANS-UI-PAY1 and TRANS-UI-PAY2 to determine mail-certification scheduling
+    eligibility.\nDXCBDSUP.md\nDXCBPIN checks both BP88-TRANS-UI-PAY1 and BP88-TRANS-UI-PAY2
+    for voice-certification eligibility.\nDXCBPIN.md\nThe Daily Certification Extracts
+    job (L2DCWEXR) reads the Loop Pay and No Pay VSAM backups in shared mode, expecting
+    each record to be a complete two-week certification.\nL2DCWEXR.md\n\nA record
+    committed with only PAY1 populated and PAY2 missing or stale would cause these
+    downstream programs to make incorrect scheduling, eligibility, or reporting decisions.\n\
+    \nImpact of Removing the Lock Early (Synthesized)\n\nIf the SSN lock or IMS hold
+    were released between Week 1 and Week 2 processing, the documented consequences
+    would include:\n\nIncorrect final-payment codes — A concurrent modification to
+    CLAIM-BAL between weeks could cause Week 2 to either miss a final-payment situation
+    (overpayment) or incorrectly flag a final payment (underpayment).\nCorrupted payment
+    segments — The NINE-SEARCH void-and-replace sequence could collide with a concurrent
+    insert or update to the same payment key, potentially leaving a voided segment
+    with no replacement, or a duplicate segment.\nPartial certification records —
+    If Week 1 is committed but Week 2 fails, the payment record would carry a valid
+    TX-UI-PAY1 but an invalid or blank TX-UI-PAY2. Downstream programs like DXCBDSUP
+    and DXCBPIN check both fields, and would likely either skip a valid scheduling
+    candidate or attempt to schedule an incomplete one.\nDuplicate SSN processing
+    — Without the SSN lock held, a second operator or CICS transaction could begin
+    processing the same claimant mid-certification, leading to race conditions on
+    the same claim record.\n\nCaveat: This impact analysis is inferred from the documented
+    data dependencies and locking mechanisms in the programs above. The knowledge
+    base does not contain a single document that explicitly states \"the lock exists
+    because...\" — the reasoning is derived from the code-level rules in LOAK025S,
+    DXCD072S, LO9CC26P, DXCBDSUP, and DXCBPIN. I'd recommend confirming with an SME
+    who knows the full IMS commit-scope configuration, as there may be additional
+    commit points or recovery mechanisms outside the held code.\n\nWould you like
+    to explore further?\n\nNINE-SEARCH payment segment handling\n\nDownstream batch
+    dependencies on PAY1/PAY2\n\nSSN lock acquire/release lifecycle"
+- id: v7-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is a synthesized
+    answer drawn from the CICS programs LOAK025S, DXCP025S, DXCP031S, and WWCD072S,
+    plus downstream batch programs DXCBDSUP, DXCBPIN, DXCBDA2R, DXCBD50E, and UIMI0443.
+    No single document describes the complete end-to-end flow; the following combines
+    what each program documents.\n\nWhere PAY1 and PAY2 Are Assigned\n\nThe transaction
+    codes stored in TX-UI-PAY1 (Week 1) and TX-UI-PAY2 (Week 2) are assigned during
+    CICS certification processing. Two programs share this responsibility depending
+    on the certification path:\n\nLOAK025S — the primary certification payment program
+    (operator-driven and web-mode certifications)\nDXCP025S — the payment-segment
+    creation subprogram, called during the same transaction\n\nBoth follow the same
+    logic: the payment is processed in a loop controlled by the PAYSUB indicator (1
+    for Week 1, 2 for Week 2). For each week, the system computes a TRANS-UI-PAY value,
+    then stores it:\n\nIf PAYSUB = 1 → final value is moved to TX-UI-PAY1\nIf PAYSUB
+    = 2 → final value is moved to TX-UI-PAY2\nHow the Transaction Code Is Built\n\n\
+    The code is a two-part composite: a base code determined by the benefit program
+    type, plus a modifier determined by the payment situation.\n\nStep 1 — Set the
+    Base Code by Program Type\nTransaction Code Base Values By Program Type\n\nProgram
+    Type\n\n\t\n\nBase Code\n\n\t\n\nSource\n\n\nUI Regular (SUA)\t0\tDXCP025S R-02100;
+    LOAK025S R-01433\nExtended Benefits (EB)\t100\tDXCP025S R-02100\nTrade Under Claim
+    (EC/TUC)\t200\tDXCP025S R-02100\nTUC Extension X (TUCX)\t300\tDXCP025S R-02100\n\
+    Emergency Unemployment Benefits (EUB)\t400\tDXCP025S R-02100\nWorkforce Development
+    (WFD)\t500\tDXCP025S R-02100\nTUC Extension Y (TUCY)\t600\tDXCP025S R-02100\n\
+    TUC Extension Z (TUCZ)\t700\tDXCP025S R-02100\nView more\nStep 2 — Apply a Modifier
+    Based on Payment Situation\n\nThe modifier is determined by evaluating several
+    conditions in order. The first matching condition wins:\n\nTransaction Code Modifiers\n\
+    \nModifier\n\n\t\n\nMeaning\n\n\t\n\nCriteria (Documented Source)\n\n\n+18\tZero-benefit
+    week\tWBA for the week = 0. No further checks performed. (DXCP025S R-02101)\n\
+    +7\tFirst compensable week — immediate sequence\tUI/SUA claim; CWE date = waiting
+    week date + 7 days (gap ≤ 7 days). (LOAK025S R-01191; DXCP025S R-01594; DXCP031S)\n\
+    +8\tFirst compensable week — immediate with earnings\tSame as +7 but the claimant
+    reported earnings > 0. (WWCD072S R-00290)\n+9\tFirst compensable week — gap after
+    waiting week\tUI/SUA claim; CWE date – waiting week date > 7 days (break in payments).
+    (LOAK025S R-01190; DXCP025S R-01593)\n+10\tFirst compensable week — gap with earnings\t
+    Same as +9 but the claimant reported earnings > 0. (WWCD072S R-00290)\n+13\tFinal
+    / last payment\tEither: next CWE date > benefit year end date (BYE), or claim
+    balance after this payment = 0, or remaining claim balance = 0. (LOAK025S R-00243,
+    R-00244)\n+15\tContinuation payment (no earnings)\tClaim balance > 0, not a first-payment
+    scenario, no earnings. For post-2002 claims: balance < MBA → +15; for pre-2002
+    claims: always +15. For TUC/old/PC60 path: also +15. (LOAK025S R-00245; DXCP025S
+    R-02100 flow)\n+16\tContinuation payment (with earnings)\tSame as +15 but claimant
+    reported earnings > 0. (LOAK025S R-01194)\n+7 (post-2002 variant)\tFirst regular
+    payment of benefit year\tPost-2002 UI/SUA claim where claim balance = MBA (no
+    prior payments). (LOAK025S R-00245)\nView more\nStep 3 — Extension Program First-Payment
+    Check\n\nFor extension programs (EB, EC, EUB, WFD, TUCX, TUCY, TUCZ), the system
+    searches IMS LOOPDB02 for an existing payment segment for that extension. If none
+    is found, this is the first extension payment and the modifier is set accordingly.
+    If one is found, it's a continuation (+15 or +16).\nDXCP025S-cbl.json\n\nStep
+    4 — NINE-SEARCH Correction\n\nWhen the modifier is +7 (immediate first compensable
+    week) and the claimant has prior weeks paid, the system searches LOOPDB02 for
+    any existing payment segment coded +9 or +10 (prior break-code payment). If found,
+    it voids the old segment (void code = 3) and inserts a corrected replacement with
+    +15 or +16 depending on whether earnings existed.\nLOAK025S-cbl.json\n\nWhat Happens
+    After Assignment\n\nOnce both TX-UI-PAY1 and TX-UI-PAY2 are set, program LOAL026S
+    copies them into the BP88 payment trigger record as BP88-TRANS-UI-PAY1 and BP88-TRANS-UI-PAY2
+    for handoff to batch processing.\nLOAL026S-cbl.json\n\nHow Downstream Batch Programs
+    Use the Codes\n\nThe transaction codes drive many downstream decisions:\n\nDXCBDSUP
+    — checks TRANS-UI-PAY1 and TRANS-UI-PAY2 for values TUI7 or TUI8 to determine
+    mail certification scheduling eligibility\nDXCBPIN — checks both pay codes to
+    exclude EUB (400–499 range) from voice certification processing\nDXCBDA2R — extracts
+    both BP88-TRANS-UI-PAY1 and BP88-TRANS-UI-PAY2 to classify records by benefit
+    program type (UI-000, EB-100, WFD-500, TUC-200, etc.) and detect last-payment
+    status\nDXCBD50E — validates the transaction code against a qualifying list (P003–P521
+    series) for internet certification eligibility\nUIMI0443 — evaluates both Trans
+    UI Pay1 and Trans UI Pay2 to control \"Benefits Exhausted\" messaging on checks
+    (e.g., codes 413/414 suppress the message)\nDXCD053S and DXCBD11U — route overpayment
+    processing by transaction code range (0–99 = UI, 100–199 = EB, etc.)\nDXCP042S
+    — classifies voided payment segments by code range for balance restoration\n\n\
+    Caveat: The modifiers +8, +10, +11, +12, and +16 are referenced in WWCD072S as
+    compensable week types; the knowledge base documents that they represent earnings
+    variants, but the detailed conditions that cause the +8/+10 split (versus +7/+9)
+    are less fully documented than the +7/+9 criteria above.\nWWCD072S-cbl.json\n\
+    \ The arithmetic for partial benefits and the earnings threshold that triggers
+    the \"with earnings\" variant are inferred from the modifier pattern — an SME
+    should confirm the exact branching logic for these.\n\nWould you like to explore
+    a specific aspect further?\n\nFinal payment detection details\n\nNINE-SEARCH correction
+    flow\n\nDownstream scheduling logic"

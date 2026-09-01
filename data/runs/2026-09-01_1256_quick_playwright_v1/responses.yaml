@@ -1,0 +1,365 @@
+responses:
+- id: v1-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere's what I can
+    piece together about the weekly certification batch process from the knowledge
+    base. Important caveat: This is synthesized from multiple retrieved documents,
+    and the most detailed source I retrieved covers the downstream extract/reporting
+    step (program DXCBDA2R). The full upstream job chain (L2* jobs) is referenced
+    at a high level but its individual step-by-step detail was not fully retrieved
+    in this search.\n\nHigh-Level Flow\n\nThe CA-7 daily overview document identifies
+    the UI continued-claim/certification processing as the L2* job chains, covering:
+    certification intake → edits → pay/no-pay decisioning → downstream extracts.\n\
+    00_ca7_daily_over...\n The Weekly Certification module has its own dedicated knowledge
+    space with more granular documentation.\n\nWhat the Knowledge Base Documents\n\
+    1. Certification Intake (Upstream — L2* chains)\n\nClaimant certifications arrive
+    via WEB and PHONE/IVR channels. The L2* batch jobs handle ingesting these certifications,
+    applying edits, and making the pay/no-pay decision. The results are split into
+    two key output files:\n\nPAYVSAM — certifications approved for payment\nNOPAY
+    — certifications that did not qualify for payment\n\n(The individual L2* job steps
+    and programs are documented in the Weekly Certification knowledge space but were
+    not fully returned in this search.)\n\n2. Certification Week Date Calculation
+    (UIMB0443)\n\nProgram UIMB0443 calculates certification week period boundaries.
+    Each certification week's start date is computed by subtracting 6 days from the
+    week-ending date (CWE date), establishing the 7-day period.\nUIMB0443.md\n\n3.
+    Certification Extract / Audit Reporting (DXCBDA2R)\n\nThis is the best-documented
+    stage in the retrieval. Program DXCBDA2R can run in either DAILY or WEEKLY mode
+    (controlled by a run-type parameter). In WEEKLY mode, it performs these 20 steps
+    :\nDXCBDA2R.md\nDXCBDA2R.cbl.md\n\nProgram Initialization — Read run type (DAILY/WEEKLY),
+    accept date control card, format production dates\nOpen Input Files — Open PAYVSAM
+    and NOPAY files\nRead & Process PAYVSAM Records — Read pay-eligible certification
+    records, categorizing each by:\nPrior week vs. current week\nSpecial dates\nSingle-week
+    vs. two-week certifications\nAge (over 4 weeks)\nEarnings status (with/without
+    earnings)\nBenefit category and last-payment flag\nChannel (WEB or PHONE)\nRead
+    & Process NOPAY Records — Same categorization for no-pay certifications\nVoid
+    & Bypass Handling — Track voided and bypassed records separately\nWrite Audit
+    Records — Write categorized records to output audit files\nCombined Certification
+    Extracts Report — Generate the combined (all-channel) Weekly Certification Extracts
+    Report with totals, percentages, and breakdowns\nWEB-Only Report — Calculate WEB-only
+    percentages (single-week vs. two-week) and write a separate WEB-only extract report\n\
+    PHONE-Only Report — Same structure filtered to PHONE/IVR certifications only\n\
+    Control Totals Summary — Display summary statistics: production run date, weekend
+    dates, counts of PAYVSAM/NOPAY records read, total processed, voids, bypasses,
+    and audit record counts by category\nFile Closure & Termination — Close all input/output
+    files and end program execution\nWhat Lives Outside This Retrieval\nThe full L2*
+    job chain (individual JCL members, step-by-step program sequence from intake through
+    pay/no-pay decisioning) — documented in the Weekly Certification knowledge space
+    but not fully returned here\nDownstream money movement (check print, direct deposit,
+    Treasury interface) — separately documented outside the LOOPS knowledge base\n\
+    Real-time capture (IVR/CICS web certification entry) — also separately documented\n\
+    Would you like me to dig deeper into a specific part of the flow?\n\nUpstream
+    L2* job chain detail\n\nDXCBDA2R extract/report internals\n\nRun a comprehensive
+    research analysis"
+- id: v1-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nProgram DXCBDA2R
+    is thoroughly documented in the knowledge base. Here's a comprehensive breakdown
+    of its role and complete I/O inventory, sourced from DXCBDA2R.md (Daily CA-7 space)
+    and DXCBDA2R.cbl.md (Weekly Certification space).\n\nProgram Role\n\nDXCBDA2R
+    is a batch COBOL program developed for the N.J. Department of Labor, Division
+    of UI/DI Programs. Its purpose is to extract and analyze certification data from
+    the upstream pay/no-pay decision files and produce Daily or Weekly Certification
+    Extract Reports.\nDXCBDA2R.md\nDXCBDA2R.cbl.md\n\nIt categorizes every certification
+    record along four dimensions:\n\nEntry source (channel): WEB, PHONE/IVR, or Manual
+    (P100)\nBenefit program type: UI, EB, WFD, TUC Tiers 1–4\nEarnings status: No
+    earnings, with earnings, or last payment\nWeek coverage: Single week, two weeks,
+    prior week, special historical dates, or over 4 weeks old\n\nThe run mode (DAILY
+    or WEEKLY) is controlled by a runtime parameter; if omitted, it defaults to DAILY.
+    The mode only affects report headers — the processing logic is identical.\nDXCBDA2R.md\n\
+    \nInput Files (2)\nDXCBDA2R Input Files\n\nDD Name\n\n\t\n\nDescription\n\n\t\n\
+    \nSource\n\n\t\n\n...\n\n\nPAYVSAM\tPayment certification records — certifications
+    approved for payment by the upstream L2* batch chain\tSequential file (INPUT mode)\t\
+    ...\nNOPAY\tNo-payment certification records — certifications that did not qualify
+    for payment\tSequential file (INPUT mode)\t...\nView more\n\nAdditionally, a SYSIN
+    control card (B040-DATE-CONTROL-CARD) provides the daily processing date (B040-DAILY-DATE)
+    and the week-ending date (B040-WEEK-ENDING-DATE) in MMDDCCYY format.\nDXCBDA2R.md\n\
+    \nOutput Files (12)\nDXCBDA2R Output Files\n\nDD Name\n\n\t\n\nCategory\n\n\t\n\
+    \nWhat Gets Written\n\n\nADTPRVWK\tPrevious Week Audit\tSingle-week certifications
+    where CWE-DATE1 matches the calculated previous week-ending date\nADTD0629\tSpecial
+    Date Audit\tCertifications with CWE-DATE1 = 06/29/2013\nADTD0928\tSpecial Date
+    Audit\tCertifications with CWE-DATE1 = 09/28/2013\nADTONEWK\tSingle Week Audit\t
+    Certifications where CWE-DATE2 = 0 (single-week)\nADTTWOWK\tTwo Week Audit\tCertifications
+    where CWE-DATE2 > 0 (two-week)\nADTCWE14\tOver 4 Weeks Audit\tSingle-week certifications
+    older than 28 calendar days\nADTNEARN\tNo Earnings Audit\tRecords where both Earnings
+    Amounts = 0\nADTWEARN\tWith Earnings Audit\tRecords where at least one Earnings
+    Amount > 0\nADTLPAYS\tLast Payment Audit\tRecords whose UI transaction code indicates
+    a last payment\nVOIDIND1\tVoid Records Audit\tPAYVSAM records with BP88-VOID-IND
+    = 1\nView more\nKey Validation & Routing Logic\nCWE Date 1 validation: If CWE-DATE1
+    = 0, the record is written to BYPASS and skipped — applies to both PAYVSAM and
+    NOPAY.\nDXCBDA2R.md\nVoid Indicator check: PAYVSAM-only — if BP88-VOID-IND = 1,
+    the record is written to VOIDIND1 and excluded from all further processing. NOPAY
+    records have no void indicator check.\nDXCBDA2R.md\nChannel identification: Operator
+    ID 9000 + Terminal ID 7777 → WEB; Terminal ID 7777 alone → PHONE; anything else
+    → MANUAL (P100).\nDXCBDA2R.md\nA single record can appear in multiple output files
+    (e.g., a record may be written to both ADTONEWK for single-week classification
+    AND ADTNEARN for no-earnings classification AND ADTLPAYS if it's a last payment).\n\
+    Reports Generated (written to AUDITREP)\n\nThe three reports share the same structure
+    and differ only by channel filter :\nDXCBDA2R.md\n\nCombined Certification Extract
+    Report — all channels (WEB + PHONE + MANUAL)\nWEB-Only Report — filtered to web-submitted
+    certifications\nPHONE-Only Report — filtered to phone/IVR-submitted certifications\n\
+    \nEach report includes: previous week count, special date counts, single-week
+    vs. two-week counts/percentages, over-4-weeks count, no-earnings counts by benefit
+    series (UI, EB, WFD, TUC, TUCX, TUCY, TUCZ), with-earnings counts by benefit series,
+    last payment counts by benefit series, and total week count.\n\nImportant Notes\n\
+    This program is the extract/reporting step only — it receives its input from the
+    upstream L2* job chain that performs certification intake, edits, and pay/no-pay
+    decisioning. The L2* chain details are documented in the Weekly Certification
+    knowledge space.\nNo database access — DXCBDA2R reads and writes sequential files
+    only; no VSAM or DB2 calls.\nDXCBDA2R.md\nDXCBDA2R.cbl.md\nNo subprogram calls
+    — it is a standalone Main/Driver module with no CALL statements to other programs.\n\
+    DXCBDA2R.md\nDXCBDA2R.cbl.md\nWhat would you like to explore next?\n\nUpstream
+    job chain and dependencies\n\nDetailed categorization business rules\n\nCA-7 scheduling
+    and triggers"
+- id: v1-Q3
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThis is a broad
+    topic that touches multiple programs and modules across LOOPS. Here is what the
+    knowledge base documents about the factors that drive pay vs. no-pay outcomes,
+    synthesized from several sources. I'll organize by processing area.\n\nOverview\n\
+    \nThe Daily CA-7 overview describes the UI continued-claim / certification processing
+    (L2* batch chains) as handling \"certification intake, edits, pay/no-pay decisioning,
+    and downstream extracts.\" It also notes that the Weekly Certification module
+    has its own dedicated knowledge space with more detailed edit-level rules.\n00_ca7_daily_over...\n\
+    \nTRA/TAA Determination Rules (Program UIMB0018)\n\nFor TRA/TAA claims, the program
+    UIMB0018 applies a cascading set of eligibility checks. The determination codes
+    that drive the outcome are:\n\nTRA/TAA Determination Codes And Outcomes\n\nDetermination
+    Code\n\n\t\n\nMeaning\n\n\t\n\nOutcome\n\n\n01\tEligible (TRA + TAA)\tPay path\n\
+    03\tEligible for TAA only (no UI claim)\tPay path (TAA only)\n04\tIneligible\t\
+    No-pay\n05\tIndeterminate (pending wage data)\tNo-pay (held for reprocessing)\n\
+    23\tTAA-eligible, recycling\tNo-pay (pending reprocessing)\n24\tIneligible, recycling\t
+    No-pay (pending reprocessing)\n25\tIndeterminate, recycling\tNo-pay (pending reprocessing)\n\
+    View more\n\nThe key ineligibility triggers that produce a no-pay (code 04) on
+    the TRA/TAA path include:\n\nSeparation before certification impact date — the
+    claimant's separation predates the trade petition's certified impact window\n\
+    Separation on/after certification expiration date — the separation falls outside
+    the certified window\nSeparation reason is not \"Lack of Work\" (code ≠ 1) — only
+    lack-of-work qualifies under TAA rules\nNo qualifying weeks or wages found in
+    the wage database and no wage request is applicable\n\nAn indeterminate (code
+    05) results when no wage data is found and no quarters exist in the wage database
+    at all — triggering a BC2 wage request to the employer.\nUIMB0018.md\n\nPayment
+    Record Filtering (Program DXCBPIN)\n\nBefore a payment record reaches certification
+    processing, DXCBPIN applies these filters that can prevent a record from advancing
+    to pay:\n\nEUB Exclusion — If UI Payment Type 1 or Type 2 falls in the range 400–499
+    (Extended Unemployment Benefits), the record is excluded entirely\nAlready-Certified
+    Exclusion — If the Certification Code field (BP88-CERT-CODE) is already populated,
+    the record is skipped (it was previously certified)\nVoice Certification Eligibility
+    — Based on the claimant's local office (900-series vs. 800-series), whether voice
+    certification is enabled for that office, and whether the payment document date
+    falls on or after the office's voice certification start date\nWaiting Week Determination
+    (DXCBPIN)\n\nThe system evaluates whether either of the two CWE (Compensable Week
+    Ending) periods carries a waiting week indicator. If BP88-WW-IND-CWE1 or BP88-WW-IND-CWE2
+    is 'Y', the Waiting Week Indicator on the CERTPAY record is set to 'Y' — meaning
+    that week is a no-pay waiting week. If neither is 'Y', it is set to 'N'.\nDXCBPIN.md\n\
+    \nNOPAY Record Suppression (Program NOPAYSUP)\n\nWhen a NOPAY record is matched
+    by SSN, Pay Code, and Document Number, the system compares the Current Certification
+    Week Ending Date (CWE-DATE3) against the Original Certification Week Ending Date
+    (ORIGINAL-CCWE). If they match, the certification has already been processed and
+    the NOPAY record is suppressed to prevent duplicate no-pay processing.\nNOPAYSUP.md\n\
+    \nDetermination Notice Suppression Rules (UIMB0018)\n\nEven when a claim is determined
+    eligible (pay path), the determination notice to the claimant may be suppressed
+    if:\n\nA nonmonetary separation issue exists on the UI claim (separation issue
+    code > 0)\nA toll-out (289D) indicator is present on the UI claim\n\nThis prevents
+    premature notification while pending issues are resolved, though it does not change
+    the underlying pay/no-pay determination itself.\n\nRecycling and Exhaustion\n\n\
+    Claims in recycling (processed more than once) have their notices and reports
+    suppressed by default. Recycling exhausts after 365 days, at which point the claim
+    is removed from automatic reprocessing. An exception: if a recycled claim newly
+    becomes TAA-eligible (code 03 or 23) where it previously was not, a determination
+    notice is generated.\nUIMB0018.md\n\nImportant Caveats\nThis answer is synthesized
+    from programs documented in the Daily CA-7 space (UIMB0018, DXCBPIN, NOPAYSUP,
+    DXCBD31R) and the CA-7 daily overview. The core weekly certification edit rules
+    — the claimant-level eligibility checks and edit validations that produce pay
+    vs. no-pay for regular UI claims — are primarily documented in the Weekly Certification
+    knowledge space. The earnings/pension offset arithmetic (handled by UIMI0440)
+    is also in that space and is an inference from source code; it should be confirmed
+    with an SME.\nThe payment suppression codes on the Certification Reference Table
+    (used by DXCBD31R for reporting) define suppression reasons but the populated
+    table values themselves live in the operations-maintained CODELOOP VSAM dataset,
+    which is outside the knowledge base.\nDXCBD31R.md\nWould you like to explore further?\n\
+    \nWeekly Certification edit rules for pay/no-pay\n\nEarnings/pension offset logic
+    (UIMI0440)\n\nFull L2* batch chain flow"
+- id: v1-Q4
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe partial-benefit
+    earnings offset formula is well-documented in the knowledge base and has been
+    verified against DXCD037S source, so it can be stated as confirmed. The formula
+    appears in the earnings-based benefit calculation routine (262-CALC-AMT-BEN-PAID1)
+    documented in programs DXCBD87E.md and UIMI0440-cbl.json.\n\nThe PWBR / Earnings
+    Offset Formula\n\nThe formula applies per CWE (Compensable Week Ending) period
+    — each week in a two-week certification is calculated independently.\n\nStep 1:
+    Compute the PWBR Ceiling (Partial Weekly Benefit Rate)\n\nTwo candidates are computed
+    from the claimant's Weekly Benefit Rate (WBR), and the greater is used :\nDXCBD87E.md\n\
+    \nPWBR Candidate 1 = WBR × 1.2\nPWBR Candidate 2 = WBR + 5\n\nPWBR = MAX(Candidate
+    1, Candidate 2)\n\n\nThis PWBR represents the maximum earnings disregard threshold
+    — the most the claimant can earn before all benefits are eliminated. The selection
+    of the greater value ensures the claimant receives the most favorable threshold.\n\
+    DXCBD87E.md\n\nStep 2: Compute the Adjusted Weekly Benefit Amount (AWBA)\nAWBA
+    = PWBR − Earnings Amount\n\n\nThe AWBA determines whether the claimant gets a
+    full benefit, a partial benefit, or no benefit at all.\nDXCBD87E.md\n\nStep 3:
+    Determine the Gross Benefit Payable\nAWBA-Based Benefit Determination\n\nCondition\n\
+    \n\t\n\nResult\n\n\t\n\nMeaning\n\n\nAWBA < 0\tBenefit = $0\tEarnings exceed the
+    PWBR ceiling; no benefit payable\n0 ≤ AWBA < WBR\tBenefit = AWBA − Deductions\t
+    Partial-benefit week (earnings reduce the benefit below the full WBR)\nAWBA ≥
+    WBR\tBenefit = WBR − Deductions\tFull-benefit week (earnings are low enough that
+    the full WBR applies)\nView more\n\nWhere Deductions (for each CWE period) are
+    :\nDXCBD87E.md\n\nDeductions = Garnishment Amount\n           + Offset Amount
+    (CWE)\n           + Federal Income Tax Withheld (CWE)\n           + Pension Amount\n\
+    \nStep 4: Cap at Claim Balance\nIf Benefit Amount > Claim Balance → Benefit Amount
+    = Claim Balance\n\n\nThis prevents overpayment beyond the claimant's remaining
+    entitlement.\nDXCBD87E.md\n\nWorked Example\n\nSuppose a claimant has:\n\nWBR
+    = $400\nEarnings = $100\nGarnishment = $0, Offset = $0, Tax Withheld = $40, Pension
+    = $0\nClaim Balance = $5,000\nStep 1:  PWBR Candidate 1 = 400 × 1.2 = $480\n \
+    \        PWBR Candidate 2 = 400 + 5   = $405\n         PWBR = MAX(480, 405)  \
+    \        = $480\n\nStep 2:  AWBA = 480 − 100             = $380\n\nStep 3:  Since
+    $380 < $400 (AWBA < WBR) → Partial week\n         Benefit = 380 − (0 + 0 + 40
+    + 0) = $340\n\nStep 4:  $340 < $5,000 → No cap needed\n\n         Net Benefit
+    Paid = $340\n\nTwo-Week Certification Handling\n\nFor CWE Week 2, the same PWBR/AWBA
+    formula is applied independently using Week 2's earnings, garnishment, offset,
+    tax, and pension amounts. However, for federal tax reporting purposes (program
+    DXCBD87E), the Week 2 benefit amount is computed as a residual: Total Check Amount
+    − Week 1 Benefit Amount.\nDXCBD87E.md\nDXCBD87E.md\n\nKey Observations\nThe $5
+    add-on (PWBR Candidate 2 = WBR + 5) acts as a floor for very low WBR amounts —
+    when WBR is below $25, the WBR + 5 candidate exceeds WBR × 1.2, providing a slightly
+    more generous disregard.\nThe crossover point is WBR = $25: below $25, the +5
+    rule dominates; at $25 and above, the ×1.2 rule dominates.\nThis formula is confirmed
+    as verified against DXCD037S source per the agent instructions. The arithmetic
+    in UIMI0440 (which handles check printing) uses the same formula structure for
+    its own benefit calculation.\nWould you like to explore further?\n\nPension offset
+    details\n\nMore worked examples\n\nPrograms that use this formula"
+- id: v1-Q5
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThis is a case where
+    the knowledge base documents the structure of the T120 table but not its populated
+    values. Let me explain what's documented and what isn't.\n\nT120 Table Layout
+    (from T120TABL.cpy)\n\nThe copybook T120TABL.cpy defines only the record layout
+    of the T120 table :\nT120TABL.cpy.txt\nT120TABL.txt\nT120TABL.txt\n\ncobol\n\n\
+    01  T120-TABLE-DATE-BC2-MAILED.\n    02 T120-CATEGORY-NUMBER          PIC 999.\n\
+    \    02 T120-DATE-MAILED-KEY.\n      04 T120-DATED-BC2-MAILED-JULIAN  PIC 999.\n\
+    \      04 FILLER                        PIC X(9).\n    02 T120-INCREASE-IN-DAYS\
+    \         PIC 9.\nT120 Table Record Layout\n\nField\n\n\t\n\nPIC\n\n\t\n\nDescription\n\
+    \n\nT120-CATEGORY-NUMBER\t999\tAlways set to 120 when constructing the lookup
+    key\nT120-DATED-BC2-MAILED-JULIAN\t999\tJulian day-of-year (DDD) used as the lookup
+    key\nFILLER\tX(9)\tUnused padding\nT120-INCREASE-IN-DAYS\t9\tSingle digit (0–9):
+    the number of additional days to add to the base mailing date\nView more\nHow
+    Programs Use It\n\nMultiple programs read this table to compute mailing dates
+    on claimant notices and forms. The logic is consistent across all documented consumers
+    (UIMI0055, UIMB0055, DXCB236E, DXCB293R, DXCB225R, DXCBD09E, DXCRD08E, UIMB0803,
+    UIMI0004, DXCD036S) :\nUIMI0055.md\nUIMB0055.md\nDXCB293R.md\nDXCB236E.md\nDXCB236E.md\n\
+    UIMB0057.md\nUIMB0803.md\nDXCB225R.md\nDXCRD08E.md\nDXCD036S-cbl.json\nUIMI0004.md\n\
+    DXCBD09E.md\n\nConstruct key: Category = 120, Julian date = today's (or the candidate
+    mail date's) day-of-year\nLook up the CODELOOP VSAM file for a matching T120 record\n\
+    If found: retrieve T120-INCREASE-IN-DAYS — the number of extra days to skip (holidays/weekends)\n\
+    If not found: default T120-INCREASE-IN-DAYS to 0 (no extra offset)\nCalculate
+    mailing date: Base date + 1 day (mandatory) + T120-INCREASE-IN-DAYS\n\nThe field
+    T120-INCREASE-IN-DAYS is described in various source documents as a holiday/weekend
+    adjustment — it tells the system how many additional days to add to push the mailing
+    date past weekends and holidays to the next valid business day.\nDXCB236E.md\n\
+    DXCB236E.md\nDXCD036S-cbl.json\nUIMI0004.md\n\nThe Actual Values Are Not in the
+    Knowledge Base\n\nThe populated T120 day-to-offset mappings live outside the knowledge
+    base entirely. The copybook T120TABL.cpy defines only the record structure; the
+    actual values (which Julian days map to which increase-in-days offsets) are operations-maintained
+    in the CODELOOP VSAM dataset. This dataset is loaded and updated by operations
+    staff, not compiled into the programs.\n\nTo obtain the actual category-to-payable-days
+    values, you would need to:\n\nQuery the production CODELOOP VSAM file for all
+    records with category number 120, or\nContact the operations team that maintains
+    the CODELOOP dataset to obtain the current schedule of holiday/weekend offset
+    entries\n\nThe PIC 9 definition means the offset can range from 0 to 9 additional
+    days, which would cover scenarios like long holiday weekends (e.g., a Thursday
+    holiday might have an offset of 4 to skip Thursday, Friday, Saturday, and Sunday).\n\
+    \nWould you like to explore further?\n\nDeep-dive into a specific program's T120
+    usage\n\nExplore other CODELOOP configuration tables"
+- id: v1-Q6
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe knowledge base
+    documents CWC extensively, though I should note upfront that the acronym \"CWC\"\
+    \ appears with multiple expansions across different source documents, which I'll
+    flag as a documented conflict. Here's what the knowledge base covers:\n\nCWC Acronym
+    — Documented Conflict\n\nThe retrieved documents expand \"CWC\" inconsistently:\n\
+    \nTable\n\nExpansion\n\n\t\n\nSource\n\n\nCombined Wage Claim\tDXCD036S-cbl.json,
+    DXCD037S-cbl.json, UIMI0004.md, DXCBD10R.md\nCurrent Work in Cycle\tL217ML.md
+    (one version)\nCurrent Work in Channel\tL217ML-jcl.json\nContinuing Weekly Claim
+    / Continued Week Claim\tDXCBD37R.md (two versions)\nCompensation for Workers'
+    Compensation\tDXCBD10R.md (Program Code 45 context)\nView more\n\nThe predominant
+    meaning across the CICS and monetary determination programs is Combined Wage Claim
+    — the interstate program where wages earned in multiple states are combined to
+    determine UI benefit eligibility in New Jersey. This is what I'll describe below,
+    but the naming conflict is an open question for SME review.\n\nWhat the CWC Process
+    Does\n\nIn the Combined Wage Claim context, CWC handles claims where a claimant
+    has worked in multiple states and their out-of-state wages need to be combined
+    with NJ wages to establish benefit eligibility. Key aspects:\n\nCWC employers
+    are identified by the wage separation form indicator IB4 (out-of-state combined
+    wage claim employer)\nCWC Program Codes define the specific employer combination
+    required :\nDXCD037S-cbl.json\nDXCD036S-cbl.json\nPC-40 — CWC + NJ employer\n\
+    PC-41 — CWC + UCFE (federal civilian)\nPC-42 — CWC + UCX (military)\nPC-43 — CWC
+    + UCFE + UCX\nOverlap wages — When a claimant's base year in one state overlaps
+    with another, the system creates a General Fund employer entry to account for
+    the overlapping amounts\nCWC Transfers — Payments under Program Code 45 are tracked
+    separately as \"CWC Transfers Paid\" rather than regular check amounts\nDocumented
+    Programs Involved\n\nThis is synthesized from multiple knowledge-base sources.
+    Programs outside the held knowledge-base slice may also participate.\n\nCICS (Online)
+    Programs\nTable\n\nProgram\n\n\t\n\nRole\n\n\t\n\nSource\n\n\nDXCD036S\tEmployer
+    type flag setting & program code validation — scans the employer table, sets NJ/UCFE/UCX/CWC
+    flags based on form indicators, validates that the employer combination matches
+    the PC (40–43), enforces minimum employer counts for CWC claims\tDXCD036S-cbl.json\n\
+    DXCD037S\tMonetary determination including CWC-specific logic — triggers the CWC
+    Claim Monetary Update (paragraph 1250-CWC-CLAIM), sets monetary date, resets claim
+    to valid, detects overlap wages across quarters, creates General Fund employer
+    entry when qualifying transactions (C010, D020, D100, A015–A017) have overlap\t\
+    DXCD037S-cbl.json\nView more\nSubprograms\nTable\n\nProgram\n\n\t\n\nRole\n\n\t\
+    \n\nSource\n\n\nUIMI0004\tWage accumulation — accumulates IB4 (CWC) employer wages
+    into claim base totals alongside NJ, UCFE, and UCX employers; tracks quarterly
+    wages/weeks for monetary summary\tUIMI0004.md\nUIMR0030\tCharging module — called
+    by UIMB0031 for charge processing during CWC transfers\tUIMB0031-cbl.html\nView
+    more\nBatch Programs\nTable\n\nProgram\n\n\t\n\nRole\n\n\t\n\nSource\n\n\nDXCBD33S\t
+    CWC data splitter — reads consolidated CWC detail file (LAK2LDXP.L201DB.CWC.DTL)
+    and distributes records into 10 parallel output streams (L217ML1–L217ML0)\tDXCBD33S-cbl.json\n\
+    UIMB0031\tCWC transfer processor — reads online CWC transfer records, opens IMS
+    database, calls charging module UIMR0030, writes batch errors and reports\tUIMB0031-cbl.html\n\
+    DXCBD37R\tCWC Charges Error Report Due to Rounding — reads CWC charge records
+    and prints a report listing charges with rounding errors (SSN, PC, Date Claim,
+    Charge Amount, Payment Amount, Balance Difference)\tDXCBD37R.md\nDXCBM03R\tCWC
+    Transferring Payments Error Report — reads CWC transfer payment error records
+    (IB6RPT), identifies record types (detail vs. totals), prints errors by batch/quarter/state\t\
+    DXCBM03R.md\nDXCBD43E\tCharge report with CWC record selection — Application 2
+    handles CWC record selection and writes qualifying records to a CWC output file\t\
+    DXCBD43E.md\nDXCBD10R\tPayment reconciliation — separates CWC Transfers Paid (PC
+    45) from regular check amounts in FROM/TO/Net Change accumulators for control
+    totals reporting\tDXCBD10R.md\nView more\nJCL Jobs\nTable\n\nJob\n\n\t\n\nRole\n\
+    \n\t\n\nSource\n\n\nL217ML\tCWC data preparation — (1) deletes 40 prior-run files,
+    (2) invokes DXCBD33S to split CWC data into 10 streams, (3) prints CWC file for
+    audit, (4) pre-allocates 10 empty report files for downstream parallel processing\t
+    L217ML.md, L217ML-jcl.json\nView more\nImportant Caveats\nThis describes the programs
+    documented in the knowledge base. The CWC space contains 136 documents, so there
+    are likely additional programs and details beyond what this search returned.\n\
+    The upstream data flow (how the consolidated CWC detail file LAK2LDXP.L201DB.CWC.DTL
+    is originally created) and downstream parallel processing (what the 10 split streams
+    feed into) are not fully covered in these results.\nThe meaning of \"CWC\" in
+    the Program Code 45 context (where DXCBD10R calls it \"Compensation for Workers'
+    Compensation\") may represent a distinct usage from the Combined Wage Claim program
+    codes 40–43 — this is another point worth confirming with an SME.\nWould you like
+    to explore further?\n\nCWC batch job flow details\n\nCWC monetary determination
+    logic\n\nCWC employer validation rules\n\nFull CWC research report"
+- id: v1-Q7
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe knowledge base
+    has no program named ZXQQ9999. The search returned no matches for that identifier.\n\
+    \nThe name also doesn't follow any of the standard LOOPS naming conventions I
+    see in the documented programs:\n\nDXCB* — Batch COBOL programs (e.g., DXCBDA2R,
+    DXCBD33S)\nDXCD*S — CICS online COBOL programs (e.g., DXCD036S, DXCD037S)\nDXCR*
+    — Related batch programs (e.g., DXCRD99E)\nUIM* — Subprograms (UIMI* for online,
+    UIMB* for batch, UIMR* for called modules)\nDXEB* / DXER* — Easytrieve report
+    programs\nL2* — JCL job names (e.g., L217ML)\nZUM* / ZUL* — JCL procedure names\n\
+    \nThe prefix ZX and suffix 9999 don't match any pattern in the held code. You
+    may want to double-check the program name for a typo. If you can share where you
+    encountered this name (a JCL member, a call chain, a document), I can help trace
+    what it might actually refer to."
+- id: v1-Q8
+  answer: "ENGINEERING ONBOARDING SPECIALIST\n\nThe code-promotion / deployment /
+    change-management process is not documented in the knowledge base. This is one
+    of the explicitly known gaps — the LOOPS knowledge spaces cover selected modules'
+    source code, batch flows, JCL, and business rules, but the process for promoting
+    code changes into the production environment lives outside this material entirely.\n\
+    \nWhere This Information Would Live\n\nBased on standard mainframe environments,
+    the deployment process documentation would typically reside in:\n\nChange management
+    / configuration management documentation (often maintained by the operations or
+    release management team)\nEndevor, Changeman, or equivalent SCM tool procedures
+    — whichever source code management system NJ DOL uses for LOOPS\nOperations runbooks
+    covering the promotion pipeline (e.g., DEV → QA → STAGE → PROD)\nChange Advisory
+    Board (CAB) or equivalent governance process documentation\nRecommended Next Steps\n\
+    How would you like to proceed?\n\nContact the release management or operations
+    team for their deployment procedures\n\nSearch for JCL or job scheduling details
+    that might reference promotion steps\n\nAsk a different question about LOOPS modules,
+    programs, or batch flows"

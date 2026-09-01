@@ -1,0 +1,100 @@
+responses:
+- id: v7-Q1
+  answer: "Based on the retrieved documents, I need to be transparent: the knowledge
+    base does not contain a concept explicitly named \"the lock shared by PAY1 and
+    PAY2.\" However, I can synthesize from documented sources what's relevant and
+    explain the coupling between these two fields.\n\nWhat the Knowledge Base Documents\n\
+    There are two relevant mechanisms:\n\n1. SSN-Level Exclusive Lock (IOMOD2K)\n\n\
+    The IOMOD2K program implements an SSN-level exclusive lock via CICS Temporary
+    Storage (TS) queues. Key documented facts :IOMOD2K-cbl.json\n\nThe lock key is
+    built from the database partition code (001–010) + the claimant's SSN — uniquely
+    identifying one claimant's record in one database\nWhen a terminal user requests
+    the lock, the system checks whether one already exists, validates terminal ownership,
+    or creates a new one\nIf another terminal already holds the lock, error code '9999'
+    is returned (\"SSN is in use by another terminal\")\nLock release (DELQ) is skipped
+    entirely for read-only conversation IDs (A200, A400, C100, C200, R100, R110) —
+    meaning the lock is retained across the full read/write conversation\nThe administrative
+    transaction LO3H can force-release any lock regardless of ownership\n2. PAY1 /
+    PAY2 Logical Coupling (DXCBD50A)\n\nIn the weekly certification profile-selection
+    program DXCBD50A, PAY1 and PAY2 are jointly validated before a record is accepted
+    :DXCBD50A.md\n\nPAY1 = 019 → validate CWE-DATE1 via 5 date offsets → then PAY2
+    must = 007 before CWE-DATE2 validation proceeds\nPAY1 = 008 → validate DOC+6 =
+    CWE-DATE1 → then PAY2 must = 015 before CWE-DATE1+7 = CWE-DATE2 is checked\nIf
+    PAY2 fails its validation, the record is not selected regardless of a successful
+    PAY1 match\nSynthesized Interpretation (Inferred — Not Stated by Name in Source)\n\
+    The SSN-level lock held by IOMOD2K covers the entire claimant record — including
+    both BP88-TRANS-UI-PAY1 and BP88-TRANS-UI-PAY2 fields. Because the certification
+    process depends on PAY1 and PAY2 being jointly consistent (as shown in DXCBD50A),
+    the lock must remain held throughout any operation that modifies either field.
+    The lock is \"shared\" by PAY1 and PAY2 in the sense that a single SSN-level lock
+    protects the atomicity of both fields as a unit.\n\nInferred Impact of Removing
+    the Lock Early\nIf the SSN lock were released between PAY1 and PAY2 processing:\n\
+    \nTable\n\n\n\nRisk\n\n\nMechanism\n\n\nData inconsistency\tAnother terminal could
+    modify the same payment record between PAY1 and PAY2 updates, leaving the two
+    fields reflecting decisions from different users/times\nFailed downstream validation\t
+    DXCBD50A expects paired values (PAY1=019 with PAY2=007; PAY1=008 with PAY2=015).
+    A mid-transaction change could break these pairings, causing valid records to
+    be silently dropped from the output file\nCertification suppression errors\tDXCBDSUP
+    uses both BP88-TRANS-UI-PAY1 and BP88-TRANS-UI-PAY2 to determine scheduling eligibility
+    (TUI7/TUI8 check). Inconsistent values could cause incorrect suppression or missed
+    scheduling\nLost updates\tA second terminal's changes could be overwritten when
+    the first terminal completes its PAY2 update and rewrites the record\nView more\n\
+    ⚠️ Caveat: This impact analysis is inferred by combining the documented lock mechanism
+    (IOMOD2K) with the documented data coupling rules (DXCBD50A, DXCBDSUP). The knowledge
+    base does not contain an explicit scenario or test case for \"early lock release.\"\
+    \ I'd recommend confirming with an SME who knows the CICS conversation flow and
+    whether any intermediate commits occur."
+- id: v7-Q2
+  answer: "Based on the retrieved documents, I can provide a partial but well-grounded
+    answer. The knowledge base extensively documents how PAY1/PAY2 values are consumed
+    and validated by downstream batch programs, but the originating assignment process
+    is only partially documented.\n\nWhat's Documented: The Meaning and Structure
+    of PAY1/PAY2\nThe TRANS-UI-PAY1 and TRANS-UI-PAY2 fields encode the benefit program
+    and payment type for Compensable Week 1 and Compensable Week 2, respectively.
+    From the documented programs, the code structure follows a series-based system
+    :DXCBDA2R.cbl.md\n\nTable\n\n\n\nSeries Range\n\n\nBenefit Program\n\n\n000–099\t
+    Regular UI\n100–199\tExtended Benefits (EB)\n200–299\tTUC Tier 1\n300–399\tTUCX
+    Tier 2\n400–499\tEUB\n500–599\tWorkforce Development (WFD)\n600–699\tTUCY Tier
+    3\n700–799\tTUCZ Tier 4\nView more\nWithin each series, specific suffixes carry
+    documented meanings :DXCBDA2R.cbl.md\nDXCBD50A.md\n\nTable\n\n\n\nSuffix (within
+    series)\n\n\nMeaning\n\n\n07 (e.g., 007, 107)\tSingle-week payment\n08 (e.g.,
+    008)\tTwo-week payment (paired with PAY2 = 015)\n13, 14 (e.g., 013, 113, 213)\t
+    Last payment on claim\n15 (e.g., 015)\tSecond week of a two-week payment (required
+    PAY2 for PAY1=008)\n19 (e.g., 019)\tNew two-week payment format (paired with PAY2
+    = 007)\n01, 02\tWaiting week credit (when PAY2 = 0)\nView more\nWhere the Assignment
+    Happens\nThe transaction code W15E is documented as the Weekly Certification CICS
+    transaction.DXCBD06E.md\n Program DXCBD06E shows that when processing payment
+    segments from the audit trail, a W15E record carries the numeric UI pay transaction
+    code within the payment segment data, which is extracted and translated into a
+    P-prefixed form (e.g., TRANS-UI-PAY value 003 → P003).DXCBD06E.md\n\nThis tells
+    us that PAY1 and PAY2 are assigned during the online CICS weekly certification
+    process (transaction W15E). The values are written to the PAYVSAM file as part
+    of the certification/payment creation.\n\nAssignment Criteria (Inferred from Downstream
+    Validation)\nThe exact CICS program logic that determines which code to assign
+    is not fully documented in the held knowledge base. However, from the paired validation
+    rules in DXCBD50A and the last-payment detection in DXCBDA2R, I can state what
+    the criteria must encode :DXCBDA2R.cbl.md\nDXCBD50A.md\n\nBenefit program series
+    — determined by the claimant's active claim type (UI, EB, TUC, WFD, etc.)\nSingle
+    vs. two-week certification — PAY1=007 for single-week; PAY1=008/PAY2=015 or PAY1=019/PAY2=007
+    for two-week\nLast payment indicator — codes 13/14 signal the final payment exhausting
+    the claim balance\nWeek position — PAY1 corresponds to CWE-DATE1 (Week 1), PAY2
+    to CWE-DATE2 (Week 2)\nHow Downstream Programs Use Them\nThe batch programs carry
+    these values forward without modification :NOPAYRFM.md\n\nNOPAYRFM — transfers
+    TRANS-UI-PAY1 and TRANS-UI-PAY2 \"exactly as-is\" from NOPAY source records into
+    PAYVSAM output records\nDXNHCM04 — selects PAY1 or PAY2 based on which CWE date
+    is most current (the DATE-TOGGLE-SW logic)\nDXCBERR2 — excludes records where
+    PAY1 or PAY2 equals 05, 06, 10, 11, 17, or 18 from payment reports\nUIMB0889 —
+    skips EB-range (100–199) and WFD-range (500–599) records for certain processing\n\
+    DXCBPIN — skips EUB-range (400–499) records\nWhat's Not in the Knowledge Base\n\
+    The specific CICS certification program that contains the decision logic for assigning
+    a particular code (e.g., \"assign 007 when this is a single-week regular UI payment\"\
+    \ vs. \"assign 019 when this is a new-format two-week certification\") is not
+    fully documented in the held spaces. Based on LOOPS naming conventions, this would
+    likely reside in a DXCD*S-named CICS program (perhaps DXCD037S or a subprogram
+    called by the certification screen). The online certification process — including
+    the WGPM module that runs after CICS claimant screens — would be where to look
+    for the definitive assignment rules.\n\n⚠️ Caveat: The suffix meanings (07=single-week,
+    08=two-week, etc.) are inferred from how DXCBD50A validates records. They are
+    consistent across all documented downstream consumers but I have not retrieved
+    the program that explicitly states \"assign code X when condition Y.\" An SME
+    familiar with the CICS certification flow would be able to confirm."

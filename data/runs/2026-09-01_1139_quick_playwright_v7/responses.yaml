@@ -1,0 +1,123 @@
+responses:
+- id: v7-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nGood question. Let
+    me walk through what the knowledge base documents about PAY1 and PAY2 in the certification
+    process, though I want to be upfront: the knowledge base does not use the exact
+    phrase \"lock shared by PAY1 and PAY2.\" What it does document is a closely related
+    concept — a gating mechanism (the certification code) that governs both PAY1 and
+    PAY2 evaluation, and VSAM file-level access controls during certification batch
+    runs. I'll synthesize from both.\n\nThe PAY1/PAY2 Certification Code Gate\n\n\
+    In the documented certification programs, the fields BP88-TRANS-UI-PAY1 and BP88-TRANS-UI-PAY2
+    are the primary and secondary UI payment transaction types on each PAYVSAM record.
+    They share a single certification code field (BP88-CERT-CODE) that acts as a common
+    gating mechanism :\nDXCBDSUP.md\n\nPAY1 is evaluated first: If TRANS-UI-PAY1 equals
+    TUI7 or TUI8 and the certification code is blank or zero, the record is flagged
+    as eligible for certification scheduling.\nPAY2 is evaluated as fallback: If PAY1
+    does not qualify (wrong type or cert code already present), the system falls through
+    to evaluate TRANS-UI-PAY2 under the same cert-code-must-be-blank rule.\nDXCBDSUP.md\n\
+    Once a cert code exists, neither PAY1 nor PAY2 can make the record eligible again
+    — the certification code effectively locks both payment types from re-entering
+    the scheduling pipeline.\nDXCBDSUP.md\n\nThis is the \"shared lock\" in the business-rule
+    sense: a single field (BP88-CERT-CODE) that, once populated, blocks both PAY1
+    and PAY2 evaluation paths.\n\nHow the Lock Is Set\n\nThe certification suppression
+    program DXCBDSUP is the primary documented setter of this lock. When it processes
+    a claim group's stacked payment records :\nDXCBDSUP.md\n\nAll records except the
+    last in the stack are marked with Certification Suppression Code '07' (BP88-CERT-SUPPRESSION)
+    and rewritten to the Payment VSAM file.\nThe last record is evaluated for scheduling
+    eligibility (TUI7/TUI8 + blank cert code), and if out-of-schedule, its CWE-DATE4
+    is zeroed and rewritten.\nThe cert-code/suppression code then prevents any downstream
+    re-processing of those records.\nVSAM-Level File Locking\n\nAt the infrastructure
+    level, the Daily Certification Extracts job (L2DCWEXR) documents that the Loop
+    Pay and No Pay VSAM Backup files must be accessed in shared mode (DISP=SHR), explicitly
+    ensuring the job does not place an exclusive lock and other concurrent processes
+    are not blocked.\nL2DCWEXR.md\n\nConversely, programs that update the PAYVSAM
+    (like DXCBDSUP) hold the file with update access while reading and rewriting records
+    in the payment stack — this is an implicit serialization that prevents concurrent
+    modification of the same records.\n\nImpact of Removing the Lock Early\n\nThis
+    part is synthesized/inferred from the documented program logic — not stated verbatim
+    in the source. Confirm with an SME before treating as authoritative.\n\nIf the
+    certification code (the \"lock\") were cleared or never written before downstream
+    programs ran, these consequences follow from the documented logic:\n\nTable\n\n\
+    Risk\n\n\t\n\nMechanism (from documented code)\n\n\nDouble certification\tPrograms
+    like DXCBPIN (voice certification) and DXCBDSUP (mail certification scheduling)
+    both check BP88-CERT-CODE = 0 or blank as their entry gate. A record with a prematurely
+    cleared cert code would re-qualify on both PAY1 and PAY2 paths, potentially generating
+    duplicate certification actions.\nIncorrect scheduling\tDXCBDSUP would re-evaluate
+    the record for biweekly scheduling (SSN group, even/odd year logic), potentially
+    zeroing CWE-DATE4 again and corrupting the claimant's schedule assignment.\nSuppression
+    count drift\tThe NUMBER-REWRITES and NUMBER-SCHEDULED counters would overcount,
+    producing misleading execution reports and complicating audit reconciliation.\n\
+    QC file contamination\tThe QCRECTY3 program matches certifications against decertifications
+    by SSN + CWE date. A re-certified record that should have been suppressed would
+    survive the merge-and-suppress pass and appear in the Daily QC output, distorting
+    quality-control sampling.\nView more\n\nIn short, the certification code is the
+    single point of enforcement that prevents a payment record from being processed
+    more than once through the certification pipeline. Removing it prematurely re-exposes
+    the record to both PAY1 and PAY2 evaluation, with cascading effects on scheduling,
+    suppression, and downstream QC files.\n\nSources: DXCBDSUP.md, DXCBPIN.md, DXCBD50A.md,
+    L2DCWEXR.md, QCRECTY3.md, PAYVSAM.txt from the LOOPS - Daily CA-7 space.\n\nWould
+    you like to explore any of these areas further?\n\nFull impact analysis across
+    the certification pipeline\n\nDeep dive into DXCBDSUP's suppression/scheduling
+    flow\n\nPAY1/PAY2 validation rules in the extract program"
+- id: v7-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThis is an excellent
+    question that gets at the data lineage of two key fields. Let me walk through
+    what the knowledge base documents — both where PAY1/PAY2 values are consumed and
+    where they are assigned — and be clear about what is and isn't covered.\n\nWhat
+    PAY1 and PAY2 Represent\n\nEach PAYVSAM payment record carries two transaction
+    type codes:\n\nBP88-TRANS-UI-PAY1 — the UI payment transaction type for Claim
+    Week 1 (the first claim week in a biweekly period)\nBP88-TRANS-UI-PAY2 — the UI
+    payment transaction type for Claim Week 2 (the second claim week)\n\nThese numeric
+    codes encode the benefit program type for each week. The documented ranges (from
+    DXCBDA3S.cbl.md, DXCBDA3R.cbl.md, UIMI0443.md) are :\nDXCBDA3S.cbl.md\nDXCBDA3R.cbl.md\n\
+    UIMI0443.md\n\nTransaction UI Payment Code Ranges\n\nCode Range\n\n\t\n\nBenefit
+    Program\n\n\t\n\nTwo-Char Code\n\n\n0–99\tRegular UI (Unemployment Insurance)\t\
+    (none)\n100–199\tEB (Extended Benefits)\tEB\n200–299\tTUC / FSC (Trade Unemployment
+    Compensation / Federal Supplemental Compensation)\tEC\n300–399\tTUCX (TUC Extended)\t\
+    TX\n400–499\tEUB (Emergency Unemployment Benefits)\tEU\n500–599\tWFD (Workforce
+    Development)\tWF\n600–699\tTUCY (TUC Variant Y)\tTY\n700–799\tTUCZ (TUC Variant
+    Z)\tTZ\nView more\n\nWithin these ranges, specific values carry special meaning.
+    The documented ones include:\n\nTUI7, TUI8 — standard mail-certification-eligible
+    regular benefit payment types (checked by DXCBDSUP and DXCBPIN)\nTUI24 — excluded
+    from certification scheduling eligibility filtering\n05, 06, 10, 11, 17, 18 —
+    restricted payment types excluded from the Payment Error Report in DXCBERR2\n\
+    413, 414 — payment adjustment types that suppress the Benefits Exhausted check-stub
+    message in UIMI0443\nWhere PAY1/PAY2 Are Assigned in Documented Programs\n\nThe
+    knowledge base documents two programs that populate these fields on output records,
+    but neither is the original creator — they transfer values from upstream source
+    records:\n\n1. NOPAYRFM — Direct Transfer (No-Pay Records)\n\nThis program transfers
+    the PAY1 and PAY2 values as-is from a NOPAY source record into the PAYVSAM output
+    record with no transformation :\nNOPAYRFM.md\n\n\"The UI Payment Transaction Indicator
+    for Claim Week 1 (TRANS-UI-PAY1) from the NOPAY source record is transferred exactly
+    as-is into the corresponding field (BP88-TRANS-UI-PAY1) of the PAYVSAM output
+    record, with no transformation or modification applied.\"\n\nThe same applies
+    to PAY2.\n\n2. DXNHCM04 — Date-Toggle-Based Selection (New Hire Cross-Match)\n\
+    \nThis program selects which of PAY1 or PAY2 becomes the active transaction code
+    on the output record, using a CWE Date Toggle Indicator :\nDXNHCM04.md\nDXNHCM04.md\n\
+    \nToggle = 1 (CWE-DATE1 is the most current claim week ending date) → BP88-TRANS-UI-PAY1
+    is assigned to the output PAYNOPAY-TRANS-UI-CODE\nToggle ≠ 1 (Toggle = 2) (CWE-DATE2
+    is most current) → BP88-TRANS-UI-PAY2 is assigned to the output PAYNOPAY-TRANS-UI-CODE\n\
+    Override: If the resulting active Claim Week Ending date (PAYNOPAY-DATE) is zero,
+    the transaction UI code is overridden to zero regardless of what was previously
+    assigned — \"a transaction UI code is not meaningful without a valid associated
+    Claim Week Ending date\"\n3. DBREAD40 — Bulk Field Copy\n\nDBREAD40 copies PAY1
+    and PAY2 (among many other fields) from the BP88 input record to the BP89 output
+    record as part of a wholesale record reformatting step.\nDBREAD40.md\n\nWhat Is
+    NOT Documented: The Original Point of Creation\n\nThe knowledge base does not
+    document the upstream process that originally populates TRANS-UI-PAY1 and TRANS-UI-PAY2
+    on the payment records before they arrive in PAYVSAM. The programs above transfer
+    or select from values that already exist on the source record. The original assignment
+    — where a claimant's claim is first classified as Regular UI (code 7), or TUC
+    (code 200+), etc. — would occur further upstream, likely in one of:\n\nCICS online
+    claim-processing screens (programs following the DXCD*S naming convention) where
+    claims adjudicators or automated processes create the initial payment record\n\
+    The payment computation batch process that builds the PAYVSAM file from claims
+    data\n\nThese upstream components are outside the current knowledge-base coverage.
+    If you're tracing the full data lineage, that would be the next area to investigate
+    — specifically the CICS programs and/or batch jobs that initially write records
+    to PAYVSAM.\n\nSources: DXCBDA3S.cbl.md, DXCBDA3R.cbl.md from LOOPS - CWC space;
+    NOPAYRFM.md, DXCBDSUP.md, DXCBERR2.md, DBREAD40.md from LOOPS - Daily CA-7 space;
+    DXNHCM04.md from LOOPS - Daily CA-7 space; UIMI0443.md, UIMI0440.md from LOOPS
+    - Daily CA-7 space.\n\nWhat would you like to explore next?\n\nFull impact map
+    of PAY1/PAY2 consumers\n\nInvestigate the upstream payment record creation process\n\
+    \nSpecial TUI code behaviors in certification"

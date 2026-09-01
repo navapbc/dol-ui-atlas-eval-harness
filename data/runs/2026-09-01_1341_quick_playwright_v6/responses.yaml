@@ -1,0 +1,650 @@
+responses:
+- id: v6-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere's a comprehensive
+    walkthrough of job L204DF2, drawn from the JCL documentation in the Daily CA-7
+    space. The JCL header describes it as: \"THIS DAILY JOB PRINTS THE DAILY BATCH
+    REGISTER AND BANK FILES.\" The job has restart criticality 9 (high).\nL204DF2.md\n\
+    L204DF2.txt\n\nWhat L204DF2 Produces\n\nThe job produces these key permanent output
+    files :\nL204DF2.md\n\nTable\n\nOutput Dataset\n\n\t\n\nDescription\n\n\t\n\n\
+    Storage / Retention\n\n\nLAK2LDXP.L204DF.RECON.ACC2528.DTL\tSorted reconciliation
+    detail — O-Category (Acct 2528)\tDisk, catalogued\nLAK2LDXP.L204DF.RECON.ACC2536.DTL\t
+    Sorted reconciliation detail — B-Category (Acct 2536)\tDisk, catalogued\nLAK2LDXP.L204DF.RECON.ACC0987.DTL\t
+    Sorted reconciliation detail — T-Category (Acct 0987)\tDisk, catalogued\nLAK2LDXP.L204DF.RECON.ACC0499.DTL\t
+    Sorted reconciliation detail — E-Category (Acct 0499)\tDisk, catalogued\nLAK2LDXP.L204DF.BNKFLDTE.DTL(+1)\t
+    Date-enriched bank records (88-byte, GDG)\tTape\nLAK2LDXP.L204DF.RECNBKP2.DTL(+1)\t
+    Consolidated backup of all 4 account files\tTape, 120-day retention\nLAK2LDXP.L2BPBNK1.CHECKS.ISSUED.DTL(+1)\t
+    Checks Issued file — sorted, deduplicated, 39-byte records\tGDG\nLAK2LDXP.L204DF.ERROR.DISK.DTL\t
+    Unmatched/error records from bank matching (133-byte print-line)\tDisk\nLAK2LDXP.L204DF.ERROR.FICHE.DTL\t
+    Error records archived to microfiche tape\tTape, 30-day retention\nLAK2LDXP.L204DF.RECNBKP2.DLY.BCKUP(+1)\t
+    Permanent daily backup of consolidated recon\tTape, permanent (EXPDT=99000)\n\
+    View more\nStep-by-Step Job Flow\nPhase 1: Cleanup (PREPARE)\n\nThe job starts
+    by unconditionally deleting six prior-run files (intermediate recon, error disk,
+    and the four account detail files) to guarantee a clean processing slate.\nL204DF2.md\n\
+    \nPhase 2: Ingest and Filter (SORTA → BNKFLMOD)\nSORTA — Copies the entire Big
+    Record Detail file (BIGREC.DTL, 80-byte records) verbatim into a temporary work
+    file &&RECONCIL. This work file is used by two separate downstream paths.\nL204DF2.md\n\
+    BNKFLMOD — Filters &&RECONCIL to extract only \"Old Account\" bank records, writing
+    them to OLDACCT.BNKREC.DTL.\nL204DF2.md\nPhase 3: Date Enrichment and Categorization
+    (BNKFLDTE → UIBNKDAT)\nBNKFLDTE — Reads OLDACCT.BNKREC.DTL plus the DATECARD control
+    card and appends 8 bytes of date-related fields, expanding each record from 80
+    → 88 bytes. Output goes to GDG BNKFLDTE.DTL(+1) on tape.\nL204DF2.md\nUIBNKDAT
+    — Reads the same OLDACCT.BNKREC.DTL with DATECARD and routes each record into
+    exactly one of four category streams based on bank account type :\nL204DF2.md\n\
+    O → &&BANKO → Account 2528\nB → &&BANKB → Account 2536\nT → &&BANKT → Account
+    0987\nE → &&BANKE → Account 0499\nPhase 4: Sort and Persist Bank Files (SORTO/B/T/E
+    → REPRO4 → BACKUPs)\nSORTO / SORTB / SORTT / SORTE — Each temp category file is
+    sorted ascending by the first 20 characters (account key) and written to its permanent
+    reconciliation detail file (e.g., RECON.ACC2528.DTL).\nL204DF2.md\nREPRO4 — Consolidates
+    all four account files (in order: 2528 → 2536 → 0987 → 0499) into a single tape
+    GDG backup (RECNBKP2.DTL(+1), 120-day retention).\nL204DF2.md\nBACKUP1–4 — Each
+    of the four account files also gets its own individual GDG backup on disk. These
+    execute unconditionally.\nPhase 5: Bank Matching (SORT1 → BNKFLBLD → REPRO5)\n\
+    SORT1 — Goes back to &&RECONCIL and filters it to only records where positions
+    71–80 contain account number 0001273518 or 0001273507.\nL204DF2.md\nBNKFLBLD —
+    Matches those filtered records against the BANKMTCH VSAM cluster. Any records
+    that fail matching are written to ERROR.DISK.DTL (133-byte print-line format).\n\
+    L204DF2.md\nREPRO5 — Backs up the BANKMTCH VSAM cluster to tape (30-day retention).\n\
+    L204DF2.md\nPhase 6: Checks Issued File Build (BUILDOUT → SORTD)\n\nThis is the
+    path that answers how check records get from the daily register to the bank files
+    :\nL204DF2.md\n\nBUILDOUT — Reads the full BIGREC.DTL (the same \"Big Record\"\
+    \ daily register) and transforms each record into a standardized 39-byte checks-issued
+    output record, writing to temp file &&OUTSTD.\nSORTD — Sorts those 39-byte records
+    in ascending order across the entire record content and removes exact duplicates
+    (SUM FIELDS=NONE). The deduplicated result is written to a new GDG generation
+    of LAK2LDXP.L2BPBNK1.CHECKS.ISSUED.DTL(+1).\n\nIn short: BIGREC.DTL → program
+    BUILDOUT (standardize to 39 bytes) → SORT (sort + dedup) → CHECKS.ISSUED.DTL GDG.\n\
+    \nPhase 7: Cleanup, Archival, and Final Backup\nREPRO6 — Backs up the payment
+    record file (PAYREC.DTL) to a GDG on disk.\nL204DF2.md\nIEFBR14A — Deletes the
+    spoiled-check file (SPOILCHK.DTL) if all prior steps succeeded; preserves it if
+    anything failed.\nL204DF2.md\nREPRO8 — Archives ERROR.DISK.DTL to microfiche tape
+    (ERROR.FICHE.DTL, 30-day retention) — but only if step REPRO6 succeeded.\nL204DF2.md\n\
+    REPRO9 — Copies the consolidated RECNBKP2.DTL to a permanently retained daily
+    backup tape (RECNBKP2.DLY.BCKUP(+1), EXPDT=99000) — but only if all prior return
+    codes ≤ 4.\nHow Check Records Flow: Daily Register → Bank Files\n\nTo zoom in
+    on your specific question, the path is a two-step transformation inside L204DF2
+    :\nL204DF2.md\n\nThe daily register data arrives as LAK2LDXP.L204DF.BIGREC.DTL
+    (80-byte records).\nProgram BUILDOUT reads BIGREC.DTL and builds a standardized
+    39-byte output record per check to temp file &&OUTSTD.\nThe SORTD step sorts &&OUTSTD
+    ascending across all 39 bytes and eliminates exact duplicates.\nThe result is
+    written as a new generation of the Checks Issued Detail GDG (LAK2LDXP.L2BPBNK1.CHECKS.ISSUED.DTL(+1)),
+    which is the bank-ready file.\n\nImportant caveat: This describes the BUILDOUT
+    → SORTD extract/transform path within L204DF2. The upstream process that populates
+    BIGREC.DTL and the downstream consumer of CHECKS.ISSUED.DTL are not documented
+    in this job's JCL — they would be covered by predecessor and successor jobs in
+    the daily CA-7 schedule.\n\nWhat would you like to explore next?\n\nTrace the
+    predecessor job that feeds BIGREC.DTL\n\nTrace the successor job that reads CHECKS.ISSUED.DTL\n\
+    \nDive into program-level details (BUILDOUT, BNKFLBLD, UIBNKDAT, etc.)\n\nSee
+    the full L204DF daily schedule sequence"
+- id: v6-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere's a complete
+    walkthrough of how job L207DCL prepares BC3E claimant forms for laser printing.
+    This is synthesized from the JCL source (L207DCL.txt), job-level business rules
+    (L207DCL.md), and the individual COBOL program analyses (DXCB165U.md, DXCB166U.md,
+    DXCBD24E.md, DXCBBC3E.md, UIMI0754.md) in the Daily CA-7 space.\nL207DCL.txt\n\
+    L207DCL.md\nDXCB165U.md\nDXCB166U.md\nDXCBD24E.md\nDXCBBC3E.md\nUIMI0754.md\n\n\
+    The JCL narrative states: \"THIS JOB PRODUCES THE FOLLOWING REPORT: PRINTS NEW
+    BC3E FORMS FOR THE CLAIMANT ON LASER.\" Restart criticality is 1 (low — force
+    complete when STEP04 returns RC 4, meaning no data). The AFP output is directed
+    to the USPS Daily print bin (ADF_ND-USPS:DAILY) using FORMDEF GEN14 and PAGEDEF
+    DOLB3E.\n\nOverview: Two Parallel Pipelines\n\nThe job splits the input into Domestic
+    and Foreign streams, transforms each independently, then merges them for a single
+    laser print output. Each pipeline adds the same enrichments (key field + DB2 sync
+    code) but through separate step names.\n\nPhase 1 — Pre-Processing (Steps VERIFY
+    → STEP04)\nTable\n\nStep\n\n\t\n\nProgram\n\n\t\n\nWhat It Does\n\n\nVERIFY\t\
+    IDCAMS\tVerifies the LAK2LDXP.VSAM.CODES.CLUSTER integrity. If this fails (RC≠0),
+    all subsequent COND=(0,NE) steps are skipped.\nBACKUP1\tIDCAMS REPRO\tBacks up
+    the source file MAIL.L207DC2.DATA.DTL (778-byte FB records) into GDG MAIL.L207DC2.DATA.BCKUP(+1).\n\
+    PREPARE1\tIEFBR14\tDeletes 9 intermediate files from any prior run to guarantee
+    a clean slate.\nSTEP04\tIEBPTPCH\tPrints the first record of the source file (STOPAFT=1)
+    so operations can visually confirm the file is readable and populated. RC 4 here
+    means empty input — the JCL header says to force-complete.\nView more\nPhase 2
+    — Split into Domestic / Foreign (Steps SORT1, SORT2)\n\nBoth sorts read the same
+    source file MAIL.L207DC2.DATA.DTL (778-byte records):\n\nSORT1 — INCLUDE COND=(342,5,CH,EQ,C'00000')
+    → Records with ZIP = 00000 at positions 342–346 are routed to MAIL.L207DCL.FRGN.DTL
+    (the Foreign stream).\nSORT2 — OMIT COND=(342,5,CH,EQ,C'00000') → All other records
+    (non-zero ZIP) are routed to MAIL.L207DCL.DATA.DTL (the Domestic stream).\n\n\
+    Both files retain the original 778-byte LRECL. No sort key is applied — records
+    are copied in their original sequence.\n\nPhase 3 — Domestic Pipeline (5 Programs)\n\
+    \nThis is the main transformation chain, each program adding or correcting specific
+    fields before the record is print-ready:\n\n1. DXCB165U — Save ZIP Codes (778
+    → 787 bytes)\nInput: MAIL.L207DCL.DATA.DTL (778 bytes)\nOutput: MAIL.L207DC3.DATA.DTL
+    (787 bytes)\nWhat it does: Copies the full 778-byte laser output record to the
+    output structure, then extracts the 5-digit ZIP code (BC3L-ZIP-END1) and 4-digit
+    ZIP+4 extension (BC3L-ZIP-END4) from the body of the record and appends them as
+    the last 9 bytes of the output record. This \"saves\" the ZIP codes at the end
+    of the record for the next program to reference.\nRecord change: 778 → 787 bytes
+    (+ 9 bytes of saved ZIP data).\nSource: DXCB165U.cbl paragraph 420 — MOVE BC3L-ZIP-END1
+    TO OUT-ZIP5-SAVE; MOVE BC3L-ZIP-END4 TO OUT-ZIP4-SAVE\n2. DXCB166U — Restore Blanked
+    ZIP Codes (787 → 778 bytes)\nInput: MAIL.L207DC3.DATA.DTL (787 bytes)\nOutput:
+    MAIL.L207DCL.TRAY.DTL (778 bytes)\nWhat it does: Reads the 787-byte records from
+    DXCB165U. For each record, checks whether the primary ZIP code field (BC3L-ZIP-END1)
+    is blank or zero. If so, it substitutes the ZIP from the saved fields (BC3L-ZIP-END1-SAVED,
+    BC3L-ZIP-END4-SAVED) that were appended to the end of the record in the prior
+    step. After correction, writes only the original 778 bytes to output (the trailing
+    9 saved-ZIP bytes are consumed but not propagated).\nRecord change: 787 → 778
+    bytes (ZIP corrected; trailing save area dropped).\nSource: DXCB166U.md business
+    rule \"ZIP Code Missing Value Substitution\"\n3. DXCBD24E — Place ZIP Code on
+    City/State Line (778 → 778 bytes)\nInput: MAIL.L207DCL.TRAY.DTL (778 bytes)\n\
+    Output: EMAIL.ZUMDAHR1.TRA10.DTL (778 bytes)\nWhat it does: Formats the 9-digit
+    ZIP as NNNNN-NNNN and inserts it into the address line (city/state field) of the
+    AFP form record. The program scans the 40-character address field for three consecutive
+    spaces and inserts the formatted ZIP there, ensuring existing city/state data
+    isn't overwritten. Record length stays 778 bytes — this is an in-place address
+    field modification.\nRecord change: 778 → 778 bytes (address field enriched with
+    formatted ZIP).\nSource: DXCBD24E.md\n4. DXCBBC3E — Add Sort Key (778 → 790 bytes)\n\
+    Input: EMAIL.ZUMDAHR1.TRA10.DTL (778 bytes)\nOutput: MAIL.L207DCL.TRAF.DTL (790
+    bytes)\nWhat it does: Reads each UI claim record, reformats claimant name fields
+    (splits last name, first name, and middle initial from a combined name field),
+    and appends a 12-byte sort key derived from a partial SSN and the mail date to
+    the end of the record.\nRecord change: 778 → 790 bytes (+ 12-byte key field).\n\
+    Source: DXCBBC3E.md\n5. UIMI0754 (via step UIMB0754) — DB2 Employer Sync Code
+    (790 → 797 bytes)\nInput: MAIL.L207DCL.TRAF.DTL (790 bytes)\nOutput: L207DCL.SYNC.DTL
+    (797 bytes)\nWhat it does: For each record, extracts the claimant SSN (3 parts
+    → packed numeric) and employer FEIN (3 parts → packed numeric), then queries the
+    DB2 table UIMT_SG03_EMPLOYER using both as a combined key (WHERE SG03_IDN_SSN
+    = :SSN AND SG03_EMP_FEIN = :FEIN). Retrieves the FEIN Synonym Code (SG03_FEIN_SYNONYM_CODE)
+    and appends it to the output record. If no matching employer row exists, the synonym
+    code defaults to zero — the record is still written.\nRecord change: 790 → 797
+    bytes (+ 7-byte sync/synonym code area).\nRuns under: DB2 plan UIMIPLNP, invoked
+    via TSO batch runner IKJEFT01.\nSource: UIMI0754.md\nPhase 4 — Foreign Pipeline
+    (Same Programs, Parallel Steps)\n\nThe Foreign stream follows the same last two
+    transformations as domestic, but skips the ZIP-save/restore and city-state insertion
+    (those records have ZIP = 00000):\n\nTable\n\nStep\n\n\t\n\nProgram\n\n\t\n\n\
+    Input → Output\n\n\t\n\n...\n\n\nDXCBBC3X\tDXCBBC3E (same program)\tFRGN.DTL →
+    FRG2.DTL\t...\nUIMB754B\tUIMI0754 (same program)\tFRG2.DTL → FRG3.DTL\t...\nView
+    more\nPhase 5 — Merge and Laser Print (Step LASRPRNT)\n\nStep LASRPRNT uses IEBGENER
+    with concatenated SYSUT1 input:\n\nMAIL.L207DCL.FRG3.DTL (foreign records, 797
+    bytes) — read first\nL207DCL.SYNC.DTL (domestic records, 797 bytes) — appended
+    after\n\nOutput goes to SYSOUT=(,),OUTPUT=(*.AFPOUT1) — the AFP printer queue
+    configured as:\n\nFORMDEF: GEN14\nPAGEDEF: DOLB3E\nDestination: LOCAL, ROOM='ADF_ND-USPS:DAILY'\n\
+    \nNo transformation is applied — IEBGENER with SYSIN DD DUMMY copies records straight
+    through.\n\nPhase 6 — Backups and Reprint Support\nTable\n\nStep\n\n\t\n\nWhat
+    It Does\n\n\nBACKUP2\tIDCAMS REPRO of SYNC.DTL → TRAY.BCKUP(+1) GDG (797 bytes)\n\
+    BACKUP3\tIDCAMS REPRO of FRG3.DTL → FRGN.BCKUP(+1) GDG (797 bytes)\nDATEPG7\t\
+    Reads SYNC.DTL (797 bytes), appends a 10-byte run date → PLUS10.DTL (807 bytes)
+    for reprint indexing\nGDGBUILD\tArchives PLUS10.DTL → PLUS10.BCKUP(+1) GDG\nDXCBR400\t
+    Returns RC=400 only if manually restarted at this step (RESTART=DXCBR400). Normal
+    runs return RC < 100, so the reprint branch is skipped.\nDXCBR7A/DXCBR7B/#REPRINT\t
+    Conditional reprint path: DXCBR7A selects records by run date from the GDG, DXCBR7B
+    filters by record-number ranges, and #REPRINT sends the subset to the AFP printer.\n\
+    View more\nRecord Length Summary Through the Chain\nL207DCL Record Length Transformation
+    Chain\n\nStep\n\n\t\n\nProgram\n\n\t\n\nLRECL In\n\n\t\n\n...\n\n\nSORT1/SORT2\t\
+    SORT\t778\t...\nDXCB165U\tDXCB165U\t778\t...\nDXCB166U\tDXCB166U\t787\t...\nDXCBD24E\t\
+    DXCBD24E\t778\t...\nDXCBBC3E\tDXCBBC3E\t778\t...\nUIMB0754\tUIMI0754\t790\t...\n\
+    LASRPRNT\tIEBGENER\t797\t...\nDATEPG7\tDATEPG7\t797\t...\nView more\n\nImportant
+    caveats:\n\nThis describes what each program does within this job. The upstream
+    process that populates MAIL.L207DC2.DATA.DTL is not documented in this job's JCL
+    — it would be covered by a predecessor job in the daily CA-7 schedule.\nThe exact
+    COBOL field layouts for DXCBD24E and DXCBBC3E are described from extracted business
+    rules, not from a line-by-line source walkthrough. The internal field-level details
+    (which bytes of the address field are scanned, exact sort-key composition) are
+    derived from the program analyses and should be confirmed against the source if
+    you need byte-level precision.\nWhat would you like to explore next?\n\nWhat feeds
+    L207DCL its input?\n\nDeep-dive into the DXCBBC3E key field derivation\n\nWalk
+    through the reprint mechanism"
+- id: v6-Q3
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe classification
+    logic lives primarily in program DXCRD99E, a daily batch program that reads Segment
+    09 (refund payment) records from the Change Data Transaction File (CDTFILE) and
+    assigns an Account Code of CASH, OFFSET (CLPY), or WRITE-OFF (WOFF) to each record
+    based on the value of field DB09-REFUND-PAY-TYPE. That code is then carried into
+    the SEG9FILE extract used by downstream reporting programs like DXCR227E (daily
+    ETA-227 extract) and DXCR227M (monthly ETA-227). Here's the full decision chain,
+    drawn directly from the DXCRD99E business rules.\n\nStep 0 — Gate Check: Reject
+    Pay Type '06'\n\nBefore any classification occurs, pay type '06' is rejected outright.
+    The record is flagged as a bad record with the error message NOT-VALID-OFFSET-MSG
+    and routed to the error file DB89FILE. No account code is ever assigned.\nDXCRD99E.md\n\
+    \nStep 1 — Initial Classification: CASH vs. OFFSET\n\nThe first decision evaluates
+    the Refund Pay Type against a fixed list of known cash payment types :\nDXCRD99E.md\n\
+    DXCRD99E.md\n\nTable\n\nIf\n\n\t\n\nDB09-REFUND-PAY-TYPE\n\n\t\n\nis…\n\n\t\n\n\
+    ...\n\n\n'01', '02', '03', '04', '07', '09', '10', '51', '11', or '12'\tCASH\t\
+    ...\t\nAnything else (and not '06', which was already rejected)\tOFFSET (CLPY)\t\
+    ...\t\nView more\n\nSo the default for any unrecognized non-rejected pay type
+    is OFFSET, not CASH. The CASH list is the explicit whitelist.\n\nStep 2 — Write-Off
+    Override for Pay Type '99'\n\nAfter the initial CASH/OFFSET assignment, a secondary
+    check looks specifically at pay type '99'. If the pay type is '99', the account
+    code is overridden to WRITE-OFF (WOFF), regardless of whether Step 1 had assigned
+    CASH or OFFSET.\nDXCRD99E.md\nDXCRD99E.md\n\nStep 3 — Write-Off Reversal: No Waiver
+    Reason → Back to CASH\n\nThere is one more refinement: if the pay type is '99'
+    but the Waiver Reason Code field (DB09-WO-WAIVER-REASON-CODE) is blank (all spaces),
+    the account code is overridden back from WRITE-OFF to CASH. The logic is that
+    without a formal waiver reason on file, the transaction cannot be treated as a
+    legitimate write-off and must instead be classified as a cash collection.\nDXCRD99E.md\n\
+    DXCRD99E.md\n\nIf the Waiver Reason Code is present (non-blank), the WRITE-OFF
+    classification is retained.\nDXCRD99E.md\n\nThe Complete Decision Flow\nRefund
+    Payment Account Code Classification Logic\n\nStep\n\n\t\n\nCondition\n\n\t\n\n\
+    Account Code Assigned\n\n\t\n\n...\n\n\nGate\tPay Type = '06'\tREJECTED — routed
+    to DB89FILE error file; no account code\t...\n1a\tPay Type ∈ {'01','02','03','04','07','09','10','51','11','12'}\t\
+    CASH\t...\n1b\tPay Type NOT in the list above (and ≠ '06')\tOFFSET (CLPY)\t...\n\
+    2\tPay Type = '99' (regardless of Step 1 result)\tOverride → WRITE-OFF (WOFF)\t\
+    ...\n3\tPay Type = '99' AND Waiver Reason Code is blank\tOverride → CASH (reverts
+    from WRITE-OFF)\t...\n3 (alt)\tPay Type = '99' AND Waiver Reason Code is present\t
+    Retain WRITE-OFF (WOFF)\t...\nView more\nHow Downstream Programs Use the Classification\n\
+    \nThe account code assigned by DXCRD99E is written into the DB99-ACCOUNT-CODE
+    field of each SEG9FILE output record. Downstream reporting programs then consume
+    it :\nDXCR227E.md\nDXCR227E.md\n\nDXCR227E (daily ETA-227 extract) reads the Cash/Offset
+    file and re-classifies records by pay type for accumulation into Section B, Line
+    202 (Cash) and Line 203 (Offset). It applies the same CASH pay-type list as DXCRD99E
+    — pay types '01'–'04', '07', '09'–'12', '51' are CASH; everything else routes
+    to the Offset line. Records that match neither are skipped.\nDXCR227E.md\nDXCR227E.md\n\
+    \nDXCR227M (monthly ETA-227) also reads the DB09 Cash/Offset file and classifies
+    pay types '05' and '06' specifically as Offset for the monthly report accumulation.\n\
+    DXCR227M.md\n\nImportant Caveat — Scope of the Documented Rules\n\nThis describes
+    the DXCRD99E classification logic as documented in the program analysis. The pay-type
+    code values themselves (what '01' means in business terms, what '10' represents)
+    are not defined in the program source — they are maintained operationally, likely
+    in the CODELOOP VSAM dataset or in reference documentation outside the knowledge
+    base. If you need the business meaning of each individual pay-type code (e.g.,
+    \"01 = personal check, 05 = benefit offset\"), that mapping would need to come
+    from an SME or from the T120/CODELOOP reference data.\n\nAlso note a documented
+    discrepancy between programs: DXCR227M classifies pay types '05' and '06' as Offset
+    for monthly reporting, while DXCRD99E rejects '06' entirely as invalid. This may
+    reflect different processing contexts (daily federal extract vs. monthly state
+    report), but it is worth flagging for SME review if you are reconciling across
+    both programs.\nDXCRD99E.md\nDXCR227M.md\n\nWhat would you like to explore next?\n\
+    \nUpstream job flow into DXCRD99E\n\nETA-227 report accumulation detail\n\nSegment
+    09 copybook field layout"
+- id: v6-Q4
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere is a comprehensive
+    breakdown of DXCRD88E — the DB08 Reformat daily batch program — synthesized from
+    the DXCRD88E.md program analysis in the Daily CA-7 space.\nDXCRD88E.md\nDXCRD88E.md\n\
+    \nDXCRD88E reads Segment 08 (refund claim / overpayment) records from the Change
+    Data Transaction file (CDTFILE), runs them through a gauntlet of structural and
+    percentage validations, computes net outstanding balances across 20 funding-category
+    buckets, and writes one output record per positive-balance bucket to SEG8FILE
+    for downstream report programs (DXERD801–DXERD804). Invalid records are routed
+    to DB89FILE with a diagnostic error message.\n\nPart 1 — Validation Pipeline\n\
+    \nEvery record is validated in a strict, short-circuiting sequence. The first
+    failing check sets the error message and immediately exits to error processing
+    — no later checks are applied.\n\nDXCRD88E Validation Pipeline\n\nStep\n\n\t\n\
+    \nValidation\n\n\t\n\nCondition to Reject\n\n\t\n\n...\n\n\n1\tBefore/After Byte
+    validity\tByte ∉ {B, A, I, D}\t...\n2\tDelete Byte rejection\tByte = D (Delete)\t\
+    ...\n3\tProgram Code 45 rejection\tProgram Code = 45\t...\n4\tFederal amount presence\t
+    All three Federal amounts due (Fraud, Non-Fraud, Agency Error) = 0\t...\n5\tPC
+    20: Fed% and UCFE% must = 100%\tPC=20 and (Fed% ≠ 100% or UCFE% ≠ 100%)\t...\n\
+    6\tPC 30: Fed% and UCX% must = 100%\tPC=30 and (Fed% ≠ 100% or UCX% ≠ 100%)\t\
+    ...\n7\tFed% + NonFed% must = 100%\tSum ≠ 100%\t...\n8\tPC 80/83: Fed%=100%, UCX%=0%,
+    UCFE%=0%\tAny condition not met\t...\n9\tUCX% + UCFE% ≈ Fed% (rounding tolerance)\t
+    Sum outside tolerance range\t...\n10\tZero Fed% with non-zero UCX/UCFE\tFed%=0
+    and (UCX%>0 or UCFE%>0)\t...\nView more\nKey Validation Notes\nTransaction Code
+    D15U is a special adjustment transaction that is exempt from all percentage validations
+    (steps 5–11). This allows D15U records to carry otherwise-invalid percentage combinations
+    without being rejected.\nDXCRD88E.md\nDXCRD88E.md\nStep 4 (federal amount presence)
+    is not an error — records with no federal amounts are silently skipped with no
+    output and no error record.\nDXCRD88E.md\nDXCRD88E.md\nStep 9 uses a configurable
+    rounding tolerance rather than exact equality, and has three additional bypass
+    conditions: PC 80/83, all-percentages-zero, and the D15U + PC 15 special case.\n\
+    DXCRD88E.md\nPart 2 — Transaction Sign Determination\n\nBefore validations begin,
+    the Before/After Byte determines how all financial amounts will be signed in output
+    :\nDXCRD88E.md\n\nDXCRD88E Transaction Sign (BUCKET-SIGN)\n\nBefore/After Byte\n\
+    \n\t\n\nMeaning\n\n\t\n\nBUCKET-SIGN\n\n\nB (Before)\tState before a change —
+    being reversed\t−1 (negative)\nA (After)\tState after a change — new current value\t
+    +1 (positive)\nI (Insert)\tNew record being added\t+1 (positive)\nD (Delete)\t
+    Record being removed\t−1 (negative) — but also rejected as bad record\nView more\n\
+    \nNote: although Delete records receive a −1 sign, they are always rejected (step
+    2) and routed to the error file. The sign is still applied to their error-file
+    amounts for directional accounting.\nDXCRD88E.md\n\nPart 3 — Claim Classification\n\
+    \nAfter the structural validations pass, each record receives a classification
+    and an account code in paragraph 1200-RECORD-HSKG :\nDXCRD88E.md\nDXCRD88E.md\n\
+    \nDXCRD88E Claim Classification Logic\n\nProgram Code\n\n\t\n\nClassification
+    (DB88-LOOPS-SKELETON-IND)\n\n\n10, 20, 21, 22, 23, 30, 31, 40, 41, 42, 43\tLOOPS
+    (active UI programs)\nAny other code (except 99)\tSKELETON (inactive/non-standard)\n\
+    99\tSUSPENSE (overrides any prior LOOPS/SKELETON assignment)\nView more\nThe Account
+    Code (DB88-ACCOUNT-CODE) is set to RECEIVABLES unconditionally for every record
+    that reaches this step, regardless of classification.\nDXCRD88E.md\nClassification
+    and account code fields are cleared to spaces before each record to prevent carry-over.\n\
+    DXCRD88E.md\nPart 4 — Balance Computation (20 Funding Buckets)\n\nFor every record
+    that passes all validations, DXCRD88E computes 20 outstanding balances, each as
+    :\nDXCRD88E.md\nDXCRD88E.md\n\nBalance = Amount Due − Amount Paid\n\nDXCRD88E
+    — 20 Funding-Category Balance Buckets\n\nFunding Category\n\n\t\n\nFraud\n\n\t\
+    \n\nNon-Fraud\n\n\t\n\n...\n\n\nNFED (Non-Federal)\t✓\t✓\t...\nFED / UCX / UCFE
+    (Federal)¹\t✓\t✓\t...\nEB (Extended Benefits)\t✓\t✓\t...\nFSC (Federal Supplemental
+    Comp.)\t✓\t✓\t...\nEUB (Extended Unemployment Benefits)\t✓\t✓\t...\nWFD (Workforce
+    Development)\t✓\t✓\t...\nFINE (Fines)\t— single bucket —\t\t...\nINTR (Interest)\t
+    — single bucket —\t\t...\nView more\n\n¹ Federal balances are written under the
+    FED funding code only for PC 80/83 and D15U special cases; for all other program
+    codes they are split between UCX and UCFE using the UCFE-as-percent-of-Federal
+    ratio.\n\nOnly buckets with a positive balance produce an output record. The balance
+    is then multiplied by the BUCKET-SIGN to produce the signed amount written to
+    SEG8FILE.\nDXCRD88E.md\nDXCRD88E.md\n\nPart 5 — Federal Amount Splitting (UCX/UCFE)\n\
+    \nThe routing of Federal refund balances depends on the program code :\nDXCRD88E.md\n\
+    \nDXCRD88E Federal Balance Routing\n\nCondition\n\n\t\n\nRouting\n\n\t\n\nFunding
+    Code(s)\n\n\nPC 80 or 83\tDirect — no split\tFED\nD15U + specific PCs (01,04,08,09,15,16,17,70,71,76,80,83,84,90)
+    with Fed amounts > 0\tBypass split — straight FED processing\tFED\nAll other PCs\t
+    Split using UCFE-as-%-of-Federal ratio\tUCFE (proportional share) + UCX (remainder)\n\
+    PC 30 special case\tUCX output even when UCX% = 0, if UCFE amount is zero\tUCX\n\
+    View more\n\nThe UCFE ratio is computed as:\n\nUCFE-as-Pct-of-Fed = UCFE Claim
+    % ÷ Federal Claim % (rounded)\n\nFor each fraud type (Fraud, Non-Fraud, Agency
+    Error):\n\nUCFE amount = Federal Balance × UCFE-as-Pct-of-Fed → written with funding
+    code UCFE\nUCX amount = Federal Balance − UCFE amount → written with funding code
+    UCX\n\nIf no UCFE was allocated (UCFE Claim% = 0), the full Federal balance goes
+    to UCX.\nDXCRD88E.md\n\nPart 6 — Safety Checks and Error Processing\nEmpty Bucket
+    Validation: After processing all 20 funding categories for a valid B (Before)
+    or I (Insert) record (excluding transaction code D070), if zero output records
+    were written, the program abends with error code 800. This guards against data
+    integrity issues.\nDXCRD88E.md\nDXCRD88E.md\nBad Record Processing (1301-BAD-IMAGE-PROC):
+    For rejected records, all 20 amount-due fields (not balances) are multiplied by
+    BUCKET-SIGN and written to DB89FILE along with SSN, Program Code, Claim Date,
+    Before/After Byte, Transaction Code, Local Office, all four claim percentages,
+    and the specific error message.\nDXCRD88E.md\nBalance Reset: All 20 balance fields
+    are zeroed after each record to prevent carry-over.\nDXCRD88E.md\nDXCRD88E.md\n\
+    Scope Caveat\n\nThis describes the DXCRD88E program as documented in its program
+    analysis. It covers only the DB08 reformatting step — the upstream CDT file extraction
+    and downstream report programs (DXERD801–DXERD804) that consume SEG8FILE are separately
+    documented. The business meanings of individual program codes (e.g., what \"Program
+    Code 10\" or \"Program Code 43\" represents) are not defined in this program's
+    source — those definitions live in operational reference data or policy documentation
+    outside the knowledge base.\n\nWhat would you like to explore next?\n\nDownstream
+    report programs\n\nCompare DB08 vs DB09 processing\n\nD15U special cases deep
+    dive"
+- id: v6-Q5
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere is a comprehensive
+    walkthrough of job L216DA — the daily Alpha (name search) file maintenance job
+    — synthesized from the L216DA.md JCL analysis, DXCBD08R.md, DXCBD06R.md, and DXCBD13R.md
+    program analyses in the Daily CA-7 space.\n\nL216DA is a seven-step daily batch
+    job that consolidates all of the day's new claims, claim changes, and the prior
+    day's baseline Alpha records into a single updated Alpha detail file on tape.
+    That tape file is then consumed by the downstream job L216DB, which deletes, redefines,
+    and reloads the actual Alpha VSAM cluster (LAK2LDXP.VSAM.ALPHA.CLUSTER) from it.\n\
+    \nInput Files\n\nL216DA consumes five inputs — three claim activity files, one
+    VSAM cluster, and two reference/control files :\nL216DA.md\nL216DA.txt\n\nL216DA
+    Input Files\n\nDD Name\n\n\t\n\nDataset Name\n\n\t\n\nDescription\n\n\t\n\n...\n\
+    \n\nNEWCLM\tLAK2LDXP.L213DA.DLY.NEWCLAIM.DTL(0)\tDaily New Claims — all newly
+    filed claims for the current processing day\t...\nCHGCLM\tLAK2LDXP.L213DA.CLMMAINT.DTL\t
+    Claim Maintenance — all change/update records for existing claims\t...\nDABSCLM\t
+    LAK2LPAP.TBACKUP.D2LID100.SRTFL.DTL(0)\tDaily Sorted Backup (DABS) — the most
+    recently produced sorted detail records (yesterday's baseline activity)\t...\n\
+    (VSAM)\tLAK2LDXP.VSAM.ALPHA.CLUSTER\tThe current Alpha VSAM KSDS — the existing
+    name-search database\t...\nTABLE\tLAK2LDXP.VSAM.CODES.CLUSTER\tVSAM Business Codes
+    Reference Table — used for code validation and translation\t...\nDATECARD\tLAK2LDXP.PROD.CNTLLIB(DATECARD)\t
+    Processing Date Control Card — supplies the current business processing date\t\
+    ...\nView more\n\nThe three claim files (NEWCLM, CHGCLM, DABSCLM) represent all
+    of the day's activity: brand-new filings, maintenance changes to existing claims,
+    and the prior day's sorted detail baseline.\n\nEnd-to-End Flow: How a Day's Activity
+    Reaches the Alpha File\n\nThe job runs seven strictly sequential steps. Each step
+    is guarded by COND=(0,NE) — if any prior step returns a non-zero return code,
+    all remaining steps are skipped.\nL216DA.md\nL216DA.md\n\nStep 1 — REPRO1A (IDCAMS):
+    Backup the Daily Sorted Detail File\n\nBefore touching any data, the job creates
+    a GDG backup of the current DABS sorted detail file:\n\nInput: LAK2LPAP.TBACKUP.D2LID100.SRTFL.DTL(0)
+    (1,144-byte FB records)\nOutput: LAK2LDXP.L216DA.D2LID100.SRTBKP.DTL(+1) — new
+    GDG generation, permanently cataloged\nOn failure the incomplete generation is
+    auto-deleted.\nL216DA.md\nL216DA.md\nStep 2 — DXCBD08R: Merge Three Claim Sources
+    into One\n\nProgram DXCBD08R reads all three claim activity files and produces
+    a single merged Alpha dataset. For each claim record it :\nDXCBD08R.md\n\nParses
+    the claimant name — splits \"LAST/FIRST\" on the / delimiter into separate last-name
+    and first-name fields\nSplits the address into street and city components\nCleanses
+    name and city by stripping non-alphabetic characters\nStamps a claim-type indicator:
+    'A' = New Claim, 'C' = Change Claim, 'B' = DABS Claim\nValidates coded fields
+    against the VSAM Codes Reference Table\nWrites a standardized 55-byte FB record
+    containing: last name, SSN, first name, city, and claim type indicator\nInput:
+    NEWCLM, CHGCLM, DABSCLM, TABLE, DATECARD\nOutput: &&MERGE (temp, 55-byte FB, passed
+    to next step)\nReports: D00RFILE — exception/error report\nStep 3 — REPRO1 (IDCAMS):
+    Unload the Alpha VSAM Cluster\n\nExtracts the entire current Alpha VSAM cluster
+    into a temporary sequential file, skipping the first record (which is a non-claim
+    header/control record) :\nL216DA.md\nL216DA.md\n\nInput: LAK2LDXP.VSAM.ALPHA.CLUSTER
+    (KSDS, 23,465-byte records, 29-byte key at offset 0)\nOutput: &&ALPHA (temp, 23,465-byte
+    FB records — claim data only)\nStep 4 — DXCBD06R: Condense VSAM Records to Key
+    Fields\n\nProgram DXCBD06R reads each massive 23,465-byte VSAM record and extracts
+    only the essential key identifying fields, condensing them into compact 54-byte
+    records suitable for merge comparison :\nL216DA.md\nL216DA.md\n\nInput: &&ALPHA,
+    TABLE, DATECARD\nOutput: &&SPLIT (temp, 54-byte FB records)\n&&ALPHA is consumed
+    and permanently deleted after this step\nStep 5 — SORT1: Sort the Merged Daily
+    Transactions\n\nSorts the 55-byte merged daily records from Step 2 in ascending
+    order by the 9-byte claim/member identifier (SSN) at position 21 :\nL216DA.md\n\
+    L216DA.md\n\nInput: &&MERGE → Output: &&SORTA (becomes DAILYF for reconciliation)\n\
+    &&MERGE is consumed and deleted\nStep 6 — SORT2: Sort the Existing Alpha Records\n\
+    \nSorts the 54-byte condensed existing Alpha records from Step 4 in ascending
+    order by the same 9-byte key at position 21 :\nL216DA.md\nL216DA.md\n\nInput:
+    &&SPLIT → Output: &&SORTB (becomes OLDALPHA for reconciliation)\n&&SPLIT is consumed
+    and deleted\nStep 7 — DXCBD13R: Reconcile and Produce Updated Alpha Detail File\n\
+    \nThis is the heart of the job. Program DXCBD13R performs a classic sequential
+    SSN merge of the two sorted files :\nDXCBD13R.md\n\nDAILYF (&&SORTA, 55-byte)
+    — today's combined activity\nOLDALPHA (&&SORTB, 54-byte) — existing Alpha baseline\n\
+    \nThe merge logic works as follows:\n\nSSN Match (OLD-SSN = DAILY-SSN): The daily
+    record replaces the old record — the updated claim data is written to output\n\
+    Daily SSN is lower (new claim not in old file): The daily record is inserted as
+    a new Alpha entry\nOld SSN is lower (no change today): The existing Alpha record
+    is carried forward unchanged\nDuplicate daily SSNs: When multiple daily records
+    share the same SSN, only the latest (last-encountered) record is kept; earlier
+    duplicates are discarded\nLast Daily Record Resolution: A special boundary-handling
+    routine ensures the last buffered daily record is placed in correct SSN order
+    relative to remaining old records\n\nOutput: LAK2LDXP.L216DA.ALPHA.DTL(+1) — a
+    new GDG generation on tape with permanent retention (EXPDT=99000). Each output
+    record contains: last name, SSN, first name, and city.\nDXCBD13R.md\n\nBoth &&SORTA
+    and &&SORTB are consumed and deleted after processing.\n\nThe Last Mile: L216DB
+    Reloads the VSAM Cluster\n\nL216DA does not write to the Alpha VSAM cluster directly.
+    Its output is a sequential GDG tape file. The downstream job L216DB completes
+    the cycle :\nL216DB.md\nL216DB.md\n\nDeletes and redefines LAK2LDXP.VSAM.ALPHA.CLUSTER
+    (KSDS, 23,465-byte records, 29-byte key, 400 primary cylinders)\nInitializes the
+    cluster with a blank seed record\nSorts the L216DA.ALPHA.DTL(0) detail file by
+    name + SSN\nLoads the sorted records into the freshly defined VSAM cluster using
+    program DXCBD04R\n\nAfter L216DB completes, the Alpha VSAM cluster reflects all
+    of the day's new claims, changes, and carried-forward records — ready for online
+    CICS name-search queries.\n\nScope Caveat\n\nThis describes the L216DA → L216DB
+    pipeline as documented in the JCL and program analyses in the Daily CA-7 space.
+    The upstream job L213DA that produces the NEWCLM and CHGCLM input files, and the
+    CICS online programs that query the Alpha VSAM cluster for name searches, are
+    separately documented and not covered here. The internal record layout of the
+    23,465-byte VSAM Alpha records (what fields beyond name/SSN/city they carry) is
+    not detailed in the held program analyses for DXCBD13R — that structure is defined
+    in the VSAM cluster's copybook, which is not in the current knowledge base slice.\n\
+    \nWhat would you like to explore next?\n\nDeep dive into DXCBD08R name parsing
+    logic\n\nWalk through L216DB VSAM reload\n\nTrace the upstream L213DA job"
+- id: v6-Q6
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nHere is a comprehensive
+    walkthrough of job L2AHD13 — the Automated Handbook Update job — synthesized from
+    the L2AHD13.txt JCL, UIPBHB01.md, and UIPBHB02.md program analyses in the Daily
+    CA-7 space.\n\nWhy the Sort Order Matters\n\nThe job processes incoming IB13 inter-state
+    messages that carry handbook section updates. Multiple IB13 messages can arrive
+    for the same state and section on a given day — for example, an editor might revise
+    Section 3 of the NJ handbook twice in one afternoon. The sort order guarantees
+    that the last record the update program encounters for each state+section is the
+    most recent one, so that version — and only that version — becomes the authoritative
+    content written to the Handbook VSAM file.\nL2AHD13.txt\nUIPBHB01.md\n\nThe composite
+    sort key is:\n\nState → Section → Century → Julian Year → Julian Day → Creation
+    Time\n\nThis produces two critical effects:\n\nGrouping: All records for the same
+    state and section are adjacent, so the update program can detect section boundaries
+    cleanly.\nChronological ordering within each group: Within a state+section, records
+    run oldest-to-newest. Because UIPBHB02 processes records sequentially and does
+    a delete-then-write for each one, the last record in the group overwrites all
+    earlier versions. If the sort were random, a stale earlier revision could land
+    after a newer one and become the version of record.\nUIPBHB01.md\nUIPBHB01.md\n\
+    End-to-End Job Flow\n\nJob L2AHD13 runs in three steps :\nL2AHD13.txt\n\nStep
+    1 — UIPBHB01: Select and Extract Qualifying IB13 Records\n\nProgram UIPBHB01 browses
+    the IB13 VSAM indexed file for incoming records (IB13I) addressed to the state's
+    .HANDBOOK receiver.\nUIPBHB01.md\nUIPBHB01.md\n For each record it:\n\nFilters
+    — skips any record whose Receiver/Sender ID is not .HANDBOOK (boundary check),
+    and skips any record whose Batch Switch = 'Y' (already processed by a prior run)\n\
+    Extracts state and section — reads the first text line of the IB13 message:\n\
+    If the line matches the section-header pattern ***** XXY ***** (where XX = state,
+    Y = section), state and section are parsed from the header\nOtherwise, state and
+    section are parsed from fixed positions at the beginning of the record-key line\n\
+    Builds the sort key — converts the IB13 creation date (Gregorian → Julian via
+    8000-GREG-CONVERT), determines century ('20' if year < 50, else '19'), captures
+    creation time, and places all six components into the temporary record prefix:
+    TEMP-STATE, TEMP-SECTION, TEMP-CENTURY, TEMP-JUL-YEAR, TEMP-JUL-DAY, TEMP-TIME\n\
+    Embeds the payload — copies the full IB13 message record into TEMP-IB13-RECORD
+    alongside the sort key\nWrites the assembled record to a sequential temporary
+    file (DA-INFLTEMP)\nReports — displays totals for IB13 records read vs. temporary
+    records written at EOJ\nStep 2 — JCL SORT: Sort the Temporary File\n\nThe JCL
+    sorts the temporary file on the sort key fields (State, Section, Century, Julian
+    Date, Creation Time) in ascending order. This is what places the most recent update
+    for each section last.\nL2AHD13.txt\nUIPBHB01.md\n\nStep 3 — UIPBHB02: Apply Sorted
+    Records to the Handbook VSAM\n\nProgram UIPBHB02 reads the sorted temporary file
+    sequentially and processes each record as follows :\nUIPBHB02.md\nUIPBHB02.md\n\
+    \nWhat UIPBHB02 Does With Each Record\n\nFor every record read from the sorted
+    file, the program executes this sequence :\nUIPBHB02.md\nUIPBHB02.md\n\nMap to
+    IB13 layout — extracts the IB13 key, data, text-line count, and text lines from
+    the temporary record into the working IB13 record layout; resets the line counter
+    to 1\n\nDetect new section vs. continuation — examines the first text line:\n\n\
+    If it matches ***** XXY ***** → new section header\nOtherwise → continuation record
+    for the current section\n\nSection-boundary handling:\n\nFirst section header
+    ever (first-time switch = 'Y'): saves the IB13 key, copies the header line into
+    the handbook record buffer, turns off the first-time switch, and advances the
+    line counter — no VSAM write yet\nSubsequent section header (first-time switch
+    = 'N'): marks the previous handbook record as having no continuation (HB-NEXT-RECORD-SWITCH
+    = 'N'), writes it to the Handbook VSAM, then copies the new header into the buffer\n\
+    Continuation record: marks the current handbook record as having a continuation
+    (HB-NEXT-RECORD-SWITCH = 'Y') and writes it to the Handbook VSAM\n\nExtract the
+    VSAM key — reads the key line from the IB13 text (second line for new sections,
+    first line for continuations) and parses the 5-character key: State (2) + Section
+    (1) + Record Number (2) = XXYZZ\n\nDelete the existing handbook record — issues
+    a DELETE HB-FILE RECORD using the extracted key. Status '23' (not found) is acceptable
+    — the IB13 may represent a brand-new section.\nUIPBHB02.md\nUIPBHB02.txt\n As
+    the source code comments state: \"When a section of the automated handbook is
+    updated, the whole section will be replaced on the VSAM file\"\n\nDelete the corresponding
+    HIP record — attempts to remove the matching entry from the Handbook In-Progress
+    file (DA-UIFLHB01) using the same key, cleaning up pending-update tracking\n\n\
+    Initialize the new handbook record — clears the last-export date to zeros, sets
+    the last-update date to today's system date (formatted via FAPCONF2), clears filler,
+    and defaults HB-NEXT-RECORD-SWITCH to 'N'\n\nCopy IB13 text lines into the handbook
+    record — iteratively moves each text line from the IB13 record into the handbook
+    record being built, adjusting the line counter to account for the key line that
+    is read but not written to the text area\n\nWrite the handbook record to VSAM
+    — writes the completed record to DA-UIFLHB00 and displays a confirmation message
+    with the key\n\nMark the source IB13 as processed — re-reads the previous IB13
+    record from the IB13 file, sets IB13-READ-SWITCH = 'Y' and IB13-BATCH-SWITCH =
+    'Y', stamps it with the current Julian date, and rewrites it. This marks it for
+    purge by the next IB13 batch cleanup run\n\nRe-read the current IB13 — re-reads
+    the current IB13 using its saved key and saves that key for the next write cycle\n\
+    \nEnd-of-file — when the sorted file is exhausted, writes the final pending handbook
+    record with HB-NEXT-RECORD-SWITCH = 'N'\n\nAt the end, the program displays totals:
+    sorted records read and handbook records written, which should be equal (one-to-one
+    correspondence).\nUIPBHB02.md\n\nSummary: Why Sort-Then-Process Works\n\nThe sort
+    order (State + Section + Date + Time ascending) combined with UIPBHB02's delete-before-write
+    logic means that for any given state+section, each successive record replaces
+    the prior one. The last record in each group — the most recent — becomes the final
+    version on the Handbook VSAM file. Without the sort, an older revision could overwrite
+    a newer one, producing an incorrect handbook.\n\nScope Note\n\nThis describes
+    the UIPBHB01 → SORT → UIPBHB02 pipeline as documented in the Daily CA-7 space.
+    The origin of the IB13 records themselves (the inter-state messaging system that
+    creates them) and the CICS online programs that display the Automated Handbook
+    to users are separately documented and not covered in this slice of the knowledge
+    base."
+- id: v6-Q7
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThe employer daily
+    charge report is produced by a two-job pipeline: job L205DJ extracts and categorizes
+    the raw charge segments, and downstream job L206DL formats and prints the control
+    reports. Here is a synthesized walkthrough drawn from the DXCBD43E.md, L206DL.md,
+    L206DL.txt, DXEBD44R.txt, and DXEBD49R.txt source analyses in the Daily CA-7 space.\n\
+    \nThe Jobs\n\nL205DJ — Runs program DXCBD43E (COBOL batch). This is the heavy-lifting
+    extract-and-categorize step. It reads every daily employer charge segment from
+    the LOOPCD04 input file, validates and classifies each record, and writes one
+    summary record per charge category to the CHGRPT output file (plus several side-effect
+    files).\nDXCBD43E.md\nDXCBD43E.md\n\nL206DL — Runs two Easytrieve programs sequentially
+    :\nL206DL.md\nL206DL.md\n\nStep 1 — DXEBD44R: reads the CHGRPT summary file from
+    DXCBD43E, sorts it by charge type, and prints up to eight separate control reports\n\
+    Step 2 — DXEBD49R: reads the CETAEMP detail file from DXCBD43E and prints the
+    Daily Charge Report — CETA Employers\nWhich Records Make It Onto the Report\n\n\
+    Program DXCBD43E applies a multi-gate validation to every record read from LOOPCD04.
+    A record must pass all gates to be categorized, accumulated into the charge table,
+    and ultimately appear on the report :\nDXCBD43E.md\nDXCBD43E.md\n\nTransaction
+    code = E010 or E012 — any other code is written to the control error report and
+    skipped\nNon-zero charge or penalty — records where both the employer charge amount
+    and the penalty charge are zero are classified (assessment-only, C-week/balance-restore,
+    or zero-charge) and counted but are not written to the charge category report\n\
+    Valid program code + pay transaction code — the combination must match the Unit
+    Record Code table; mismatches go to the error report\nValid pay transaction code
+    — must be found in the Prefix Pay Code table (binary search); invalid pay codes
+    go to the error report\nNon-zero employer FEIN — all-zeroes FEINs are flagged
+    as errors\nNot a CETA or SP01 employer — CETA employers (FEIN prefix 800000) and
+    SP01 special FEINs bypass the main charge-category pipeline and are routed directly
+    to the CETAEMP output file for the separate CETA report\n\nRecords that survive
+    all six gates are classified into one of 42 charge categories by employer FEIN
+    and pay-transaction-code range, accumulated in a charge table, and at wrap-up
+    one summary record per category is written to the CHGRPT file.\nDXCBD43E.md\n\n\
+    How the Report Is Organized\nStep 1 — DXEBD44R (Charge Control Reports)\n\nDXEBD44R
+    sorts the incoming CHGRPT records by CHGTYPE (charge type code) and then splits
+    them across multiple reports by charge-type range :\nDXEBD44R.txt\n\nDXEBD44R
+    Report Breakdown By Charge Type\n\nReport\n\n\t\n\nReport Number\n\n\t\n\nTitle\n\
+    \n\t\n\n...\n\n\nRPT1\tDXEBD44R-RPT-001\tDaily Employer Charge Control Report
+    (No EB)\t...\nRPT2\tDXEBD44R-RPT-002\tDaily Extended Benefits Charge Control Report\t\
+    ...\nRPT3\tDXEBD44R-RPT-003\tDaily Charge Report — Conversion Employer\t...\n\
+    RPT4\tDXEBD44R-RPT-004\tDaily E.U.B. Charge Control Report\t...\nRPT5\tDXEBD44R-RPT-005\t
+    Daily W.F.D. Charge Control Report\t...\nRPT6\t(added 3/99)\tNon-Charge Types
+    Report\t...\nRPT7\t(added 3/02)\tFSC Charge Types Report\t...\nRPT8\t(added 4/02)\t
+    TUCX Charge Types Report\t...\nView more\n\nEach report shares the same columnar
+    layout :\nDXEBD44R.txt\n\nFund (charge category description, e.g. \"UI-CONTRIBUTORY\"\
+    , \"UCFE\", \"UCX\", \"GENERAL FUND\")\nDebit CNT — count of debit transactions\n\
+    Debit DOLLARS — total debit dollar amount\nCredit CNT — count of credit transactions\n\
+    Credit DOLLARS — total credit dollar amount\nNet Amount of DOLLARS — net (debit
+    minus credit)\nTotal REC CNT — total record count for that category\n\nAt the
+    bottom of each report, a Totals line sums all the columns. After all the sub-reports
+    print, DXEBD44R also computes reconciliation cross-totals from the individual
+    category net amounts and writes those to a reconciliation VSAM cluster.\nDXEBD44R.txt\n\
+    \nStep 2 — DXEBD49R (CETA Report)\n\nDXEBD49R is a simple detail-listing report
+    titled \"Daily Charge Report — CETA Employers\" (DXEBD49R-RPT-001). It prints
+    one line per CETA charge record with :\nDXEBD49R.txt\n\nSSN, Claimant Name, Date
+    of Claim, Local Office, Charge Week Ending, Charge Amount, WBR, MBA, Pay Code,
+    Balance, Partial amount, Employer Registration Number\n\nAt the bottom it prints
+    an Amount Total of all charge amounts.\n\nUpstream: The 42 Charge Categories\n\
+    \nThe category index assigned by DXCBD43E determines which sub-report a category
+    lands on. Here is the documented mapping (synthesized from the DXCBD43E.md business
+    rules) :\nDXCBD43E.md\nDXCBD43E.md\n\nDXCBD43E Charge Category Index Map\n\nIndex\n\
+    \n\t\n\nCategory\n\n\t\n\nEmployer FEIN / Condition\n\n\t\n\n...\n\n\n1\tUI Contributory
+    (Regular)\tRegular NJ employer, regular pay codes\t...\n2\tGeneral Fund (Regular)\t
+    FEIN 888888, regular pay code\t...\n3\tUCFE (Regular)\tFEIN 000002, regular pay
+    code\t...\n4\tUCX (Regular)\tFEIN 000003 or 444444, regular pay code\t...\n5\t
+    General Fund – FSC/Extended\tFEIN 888888, FSC/extended pay code\t...\n10\tOut-of-State\t
+    FEIN 999998\t...\n11\tUI Contributory – EB\tRegular NJ employer, EB pay code\t\
+    ...\n12\tEB Charged to Federal\tFEIN 777777, federal EB\t...\n13\tGeneral Fund
+    – EB First Week\tFEIN 888888, pay codes 107/108\t...\n14\tGeneral Fund – EB Unfunded\t
+    FEIN 888888, EB unfunded code\t...\nView more\nScope Note\n\nThis describes the
+    extraction step (L205DJ / DXCBD43E) and the control-report printing step (L206DL
+    / DXEBD44R / DXEBD49R). The same extraction also feeds several other downstream
+    jobs and files — the Federal Charge Report (FEDRPT, printed by L206DN), the B187
+    bank tape (L206DK), the CWC selection file (SLCTCWC), and the UC53 Penalty Assessment
+    (L206DP) — but those are separate report streams. Programs DXCBD40E and DXCBD50E,
+    which appear in the source code with the same per-claim-type report title literals
+    (Intrastate 1A, Interstate 1B, UCFE 1C, etc.), are different programs producing
+    the per-claim-type detail employer charge reports; their full business rules were
+    not fully retrieved in this search, so the detail-report pipeline is not described
+    here.\n\nWould you like to explore a related topic?\n\nB187 reverse file details\n\
+    \nUC53 penalty assessment pipeline\n\nPer-claim-type detail reports (DXCBD40E
+    / DXCBD50E)"
+- id: v6-Q8
+  answer: "ENGINEERING ONBOARDING SPECIALIST\nCompleted 1 step\n\nThis is a great
+    question — and yes, there is something quite surprising here. Let me walk through
+    the full picture.\n\nWhere the Error Records Land\n\nProgram DXCRD88E (the \"\
+    DB08 Reformat\" step) opens three files at startup in its 200-HSKG paragraph :\n\
+    DXCRD88E.txt\nDXCRD88E.txt\n\ncobol\n\nOPEN INPUT CDTFILE\n     OUTPUT SEG8FILE\n\
+    \     OUTPUT DB89FILE.\n\nInside the COBOL code, the program writes error records
+    to the FD named DB89FILE — the DB89-REFERROR record is written via WRITE DB89-REC
+    to the DB89FILE logical file.\nDXCRD88E.md\nDXCRD88E.md\n\nNow here's where the
+    JCL becomes important. In the DXCRD88E step of job L213DC, the DD card for DB89FILE
+    is wired to :\nL213DC.txt\n\njcl\n\n//*DB89FILE DD  DSN=LAK2LDXP.L213DC.DB98FILE.DTL,\
+    \       ← commented out\n//DB89FILE DD  DSN=LAK2LDXP.L213DC.DB98FIL.DTL,DISP=(NEW,CATLG,DELETE),\n\
+    //             DCB=(LRECL=159,BLKSIZE=23373,RECFM=FB,BUFNO=20),\n//          \
+    \   SPACE=(CYL,(250,250),RLSE)\nThe Surprising Part\n\nThe COBOL program's error
+    output (DB89FILE) is mapped by the JCL to the DB98FIL.DTL dataset — not to a dataset
+    with \"DB89\" in its name.\n\nIn other words:\n\nThe program thinks it's writing
+    to \"DB89FILE\" (its FD name and internal purpose: error records for bad Segment
+    8 / DB08 records)\nThe JCL redirects that logical file to LAK2LDXP.L213DC.DB98FIL.DTL\n\
+    The JCL documentation and flow diagrams explicitly label this as \"DB89FILE -
+    DB98 Detail File\" or \"DB89FILE - DB98 Filter Detail\"\n\nSo the error records
+    from the Segment 8 validation step end up in a file called DB98FIL, and the commented-out
+    line even shows a previous name DB98FILE — revealing the file was always meant
+    for the DB98 path, not a DB89-named error file. The naming collision is this:
+    the COBOL FD is called DB89FILE (following a naming convention for error/exception
+    output from DB08 processing), but the physical dataset follows the segment number
+    convention (DB98 for Segment 8 data, DB89 for Segment 9 data).\n\nThe mirror image
+    happens in the very next step (DXCRD99E), where that program's DB89FILE DD is
+    mapped to LAK2LDXP.L213DC.DB89FIL.DTL — which makes intuitive sense because DXCRD99E
+    processes Segment 9.\nL213DC.md\nL213DC.md\n\nWhat Happens to the Error Records
+    Downstream\n\nAt the end of job L213DC, the REPRA262 step uses IDCAMS REPRO to
+    archive both files into GDG versioned storage :\nL213DC.md\n\nDB98FIL.DTL → DB98FILE.DTL(+1)
+    (Segment 8 errors/filter detail)\nDB89FIL.DTL → DB89FILE.DTL(+1) (Segment 9 errors/filter
+    detail)\n\nBoth archives are permanently catalogued for downstream use.\n\nSummary\n\
+    DXCRD88E Error Output Mapping\n\nLayer\n\n\t\n\nName\n\n\t\n\nPhysical Dataset\n\
+    \n\t\n\n...\n\n\nCOBOL FD\tDB89FILE\t(logical only)\t...\nJCL DD\tDB89FILE\tLAK2LDXP.L213DC.DB98FIL.DTL\t\
+    ...\nGDG Archive\tDB98FILE.DTL(+1)\tLAK2LDXP.L213DC.DB98FILE.DTL(+1)\t...\nView
+    more\n\nThe surprising takeaway: if you're looking at production datasets and
+    searching for \"DB89\" to find the Segment 8 error records, you won't find them
+    — they're hiding in the DB98 file. The \"DB89\" COBOL FD name is an internal convention
+    for \"error file from the DB08 reformat,\" but the JCL maps it by segment number
+    to DB98. This naming cross-over is an easy source of confusion during debugging.
+    An SME or the original system designer would be the right person to confirm whether
+    this was always intentional or an artifact of historical naming evolution (the
+    commented-out DB98FILE line hints at the latter).\nL213DC.txt\n\nWould you like
+    to explore more about this job?\n\nShow me the full list of validation rejection
+    reasons\n\nCompare DXCRD88E vs DXCRD99E\n\nTrace the error files downstream"
