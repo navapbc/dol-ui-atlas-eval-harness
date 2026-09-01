@@ -1,0 +1,77 @@
+version: v7
+frozen_on: '2026-08-28'
+question_sha256: 823f0942fa269ab5d433d82e5af7a2507664ea97bd669a5012e377d9e336680f
+agent: engineering_onboarding_specialist
+corpus: quick_space_ca7_daily_s3
+sourcing: Questions asked directly by NJDOL SMEs, recorded verbatim. Each question names the SME and
+  session in `provenance`. Unlike v1-v6 the wording is not AI-drafted; ground truth still requires 
+  SME verification before it counts.
+questions:
+- id: v7-Q1
+  text: In the certification process why is there a lock shared by PAY1 and PAY2, and what would be 
+    the impact of removing the lock early?
+  type: retrieval
+  type_note: retrieval (single-program gate logic + consequence reasoning)
+  provenance: 'Oscar, M-MAT weekly planning 2026-08-25. Verbatim from the PAY1/PAY2 Lock Impact doc linked
+    on #2835.'
+  expected_stance: answer
+  ground_truth: 'DXCBD50A implements a two-stage sequential gate on PAYVSAM records. Stage 1: BP88-TRANS-UI-PAY1
+    must equal 019 to enter date-offset matching. Stage 2: five offsets from Document Date (DOC + 6, 13,
+    20, 27, 34 days) are tested against CWE Date1; no match rejects the record before PAY2 is ever examined.
+    Stage 3 (Process 7): BP88-TRANS-UI-PAY2 must equal 007 to be written to the output file. Removing
+    the PAY2 gate over-selects: any PAY1=019 record with a qualifying date offset writes through regardless
+    of sub-type, contaminating downstream certification processing that consumes the output file.'
+  partial_credit: Naming the DXCBD50A gate and both code values without the date-offset stage 
+    between them is partial - the ordering is the substance.
+  after:
+  checks:
+    required_all:
+    - DXCBD50A
+    - '019'
+    - '007'
+    required_any: []
+    forbidden: []
+    expect_citations:
+    - DXCBD50A
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes:
+- id: v7-Q2
+  text: What process assigns payment records the pay1 and pay2 values, and using what criteria?
+  type: gap_probe
+  type_note: gap_probe (upstream origin absent from corpus; tests gap honesty)
+  provenance: 'Oscar, M-MAT weekly planning 2026-08-25. Verbatim from the PAY1/PAY2 Lock Impact doc linked
+    on #2835. This is the question #2835 exists to track.'
+  expected_stance: hedge
+  ground_truth: 'The corpus documents how PAY1/PAY2 are CONSUMED, never how they are ASSIGNED. Supporting
+    evidence the answer should reach: DXCBD06E (job L213DA) creates PAYVSAM/PAYUPD4F from CURDAY and performs
+    W15E transaction-code translation, prefixing the extracted TRANS-UI-PAY numeric with P - so the fields
+    already exist on the payment segment when it runs. DXNHCM04 BR-006 selects between PAY1 and PAY2 on
+    DATE-TOGGLE-SW (1 -> PAY1, 2 -> PAY2), confirming both are pre-populated. PAY1 ranges encode benefit
+    program (0-99 regular UI, 100-199 EB, 200-299 TUC1, 300-399 TUCX, 400-499 EUB, 500-599 WFD, 600-699
+    TUCY, 700-799 TUCZ) per DXCBDA3R/UIMI0143. The CICS online program that stamps the values is NOT in
+    the ingested corpus; correct behaviour is to say so rather than name one. Resolving that origin is
+    the after-half of #2835 and depends on #2751.'
+  partial_credit: Reaching DXCBD06E or DXNHCM04 but asserting a specific CICS stamping program as 
+    documented is a gap_honesty failure, not partial credit.
+  after: v7-Q1
+  checks:
+    required_all:
+    - DXCBD06E
+    required_any:
+    - DXNHCM04
+    - W15E
+    - DATE-TOGGLE-SW
+    forbidden: []
+    expect_citations:
+    - DXCBD06E
+    - DXNHCM04
+  verification:
+    status: unverified
+    verified_by:
+    verified_on:
+    notes: 'Before-half of #2835. Once #2751 lands do NOT mutate this entry: add a new question with the
+      same wording, expected_stance answer, naming the CICS stamping program, so the before/after pair
+      stays comparable.'

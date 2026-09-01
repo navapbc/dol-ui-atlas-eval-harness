@@ -10,8 +10,8 @@ Design: [docs/superpowers/specs/2026-08-26-atlas-eval-harness-design.md](docs/su
 
 | Path | Contents |
 |---|---|
-| `data/banks/` | 6 question bank YAML files (v1-v6), 50 questions total. v1-v5 are frozen; v6 is held out, unfrozen. Ground truth lives here. |
-| `data/runs/` | One directory per run (28 migrated runs today): `run.yaml` metadata, `responses.yaml`, `transcript.md`, `snapshot.json` config snapshot, `scores.csv`. |
+| `data/banks/` | 7 question bank YAML files (v1-v7), 50 questions total, all frozen. Ground truth lives here. |
+| `data/runs/` | One directory per run: `run.yaml` metadata, `responses.yaml`, `transcript.md`, `snapshot.json` config snapshot, `scores.csv`. |
 | `data/scores.csv` | **Generated** rollup of every complete run. Do not hand edit. |
 | `reference/` | Migrated audit material that is not part of the dataset. |
 | `atlas_eval/` | The harness. |
