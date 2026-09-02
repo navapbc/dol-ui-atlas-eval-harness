@@ -142,10 +142,13 @@ contain) rather than trying to nest a second OR group.
 ## Development
 
     python -m pip install -e '.[dev]'
+    python -m playwright install chromium
     atlas-eval validate --banks data/banks
     python -m pytest -q
 
-Both run without AWS credentials or network access.
+Both run without AWS credentials or network access. The `playwright install`
+step downloads the browser the DOM tests drive; skipping it leaves those tests
+erroring on a fresh clone.
 
 ## Running a bank
 

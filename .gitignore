@@ -15,3 +15,7 @@ venv/
 tests/fixtures/quick/*.html
 tests/fixtures/quick/*.selectors*.json
 !tests/fixtures/quick/sanitized_*.html
+
+# Generated paste run sheets (regenerate with: atlas-eval run ... --print-sheet)
+/sheet.md
+/*_sheet.md
