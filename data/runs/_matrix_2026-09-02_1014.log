@@ -1,0 +1,7 @@
+matrix: 6 cell(s) -- failed=6
+  failed    Engineering Onboarding Specialist (v2) x v1  (error: snapshot failed: aws quicksight list-agents --aws-account-id 298632317228 failed (255): aws: [ERROR]: Error when retrieving token from sso: Token has expired and refresh failed)
+  failed    Engineering Onboarding Specialist (v2) x v2  (error: snapshot failed: aws quicksight list-agents --aws-account-id 298632317228 failed (255): aws: [ERROR]: Error when retrieving token from sso: Token has expired and refresh failed)
+  failed    Engineering Onboarding Specialist (v2) x v3  (error: snapshot failed: aws quicksight list-agents --aws-account-id 298632317228 failed (255): aws: [ERROR]: Error when retrieving token from sso: Token has expired and refresh failed)
+  failed    Engineering Onboarding Specialist (v2) x v4  (error: snapshot failed: aws quicksight list-agents --aws-account-id 298632317228 failed (255): aws: [ERROR]: Error when retrieving token from sso: Token has expired and refresh failed)
+  failed    Engineering Onboarding Specialist (v2) x v5  (error: snapshot failed: aws quicksight list-agents --aws-account-id 298632317228 failed (255): aws: [ERROR]: Error when retrieving token from sso: Token has expired and refresh failed)
+  failed    Engineering Onboarding Specialist (v2) x v6  (error: snapshot failed: aws quicksight list-agents --aws-account-id 298632317228 failed (255): aws: [ERROR]: Error when retrieving token from sso: Token has expired and refresh failed)

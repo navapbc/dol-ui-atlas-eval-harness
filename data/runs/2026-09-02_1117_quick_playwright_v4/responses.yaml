@@ -1,0 +1,574 @@
+responses:
+- id: v4-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nHere is what
+    the knowledge base documents about these two DB2 tables and the batch jobs that
+    touch them. Important caveats up front:\n\nThe knowledge base has no process by
+    the names \"SG01 pipeline\" or \"new-hire crossmatch.\" Those appear to be names
+    from your replacement-system spec. I've mapped them to the nearest documented
+    DB2 objects below, but please confirm with an SME that the spec is indeed referring
+    to these tables.\nThe field inventories below are synthesized from SQL in JCL
+    and from CICS program business rules across multiple documents — they represent
+    fields that appear in documented code, not necessarily the full DDL.\nOTDUIMP.UIMT_SG01_CLAIMANT
+    — the Claimant Table\n\nThis is the master claim-level table for UI benefits.
+    It is keyed on the composite (SG01_IDN_SSN, SG01_CDE_PROGRAM_UIB, SG01_DTE_CLAIM_UIB)
+    — SSN + program code + claim date.\nL2PUA003.txt\nNAVAWAGE-cbl.json\nUMODPMTS-cbl.json\n\
+    \nDocumented columns (synthesized from L2PUA003.txt, NAVAWAGE-cbl.json, UMODPMTS-cbl.json,
+    UMODWAGE-cbl.json):\n\nUIMT_SG01_CLAIMANT — Documented Columns\n\nColumn\n\n\t\
+    \n\nDescription\n\n\t\n\nSource\n\n\nSG01_IDN_SSN\tClaimant SSN (PK)\tL2PUA003,
+    NAVAWAGE, UMODWAGE\nSG01_CDE_PROGRAM_UIB\tUI Benefit Program Code (PK)\tL2PUA003,
+    NAVAWAGE\nSG01_DTE_CLAIM_UIB\tUI Benefit Claim Date (PK)\tL2PUA003, NAVAWAGE\n\
+    SG01_DATE_BEGIN_BASE\tBase Period Begin Date\tNAVAWAGE, UMODWAGE, UMODPMTS\nSG01_DATE_END_BASE\t
+    Base Period End Date\tNAVAWAGE, UMODWAGE, UMODPMTS\nSG01_BEN_YEAR_END\tBenefit
+    Year End Date\tUMODPMTS\nSG01_BAL_CLAIM_REM\tRemaining Claim Balance\tUMODPMTS,
+    L2PUA003\nSG01_POT_WEEKS_DUE\tPotential Weeks Due\tUMODPMTS\nSG01_NUM_WKS_PAID\t
+    Number of Weeks Paid\tUMODPMTS\nSG01_MBA\tMaximum Benefit Amount\tL2PUA003\nView
+    more\nOTDUIMP.UIMT_RSA_NONMON — the RSA Non-Monetary Table\n\nThis table stores
+    non-monetary RSA (Reemployment Services and Eligibility Assessment) records for
+    UI claims — essentially proofing/adjudication tracking for non-monetary eligibility
+    issues.\nL2UDB020.md\nL2UDB020.md\n\nDocumented columns (from L2UDB020.md):\n\n\
+    UIMT_RSA_NONMON — Documented Columns\n\nColumn\n\n\t\n\nDescription\n\n\t\n\n\
+    Source\n\n\nIDN_SSN\tClaimant SSN\tL2UDB020\nTMS_RECORD_LOAD\tRecord Load Timestamp\t\
+    L2UDB020\nCDE_PROGRAM_UIB\tUI Benefit Program Code\tL2UDB020\nDTE_CLAIM_UIB\t\
+    UI Benefit Claim Date\tL2UDB020\nIDN_HIST\tHistorical Record Identifier\tL2UDB020\n\
+    DTE_PROOFING\tProofing Date\tL2UDB020\nIDN_LOGON_ID\tLogon ID of processing user\t\
+    L2UDB020\nIDN_USERNAME\tUsername of processing user\tL2UDB020\nTMS_RECORD_UPDT\t
+    Record Last Update Timestamp\tL2UDB020\nView more\nBatch Jobs that Read or Write
+    These Tables\nBatch Jobs Touching UIMT_SG01_CLAIMANT And UIMT_RSA_NONMON\n\nJob\n\
+    \n\t\n\nTable(s) Accessed\n\n\t\n\nR/W\n\n\t\n\n...\n\n\nL2PUA003\tUIMT_SG01_CLAIMANT,
+    UIMT_SG11_NONMON, UIMT_SG02_PAYMENT, UIMT_IDENTITY_THEFT_SSN\tRead\t...\nL2UDB020\t\
+    UIMT_RSA_NONMON\tRead\t...\nL2FTPRS2\t(reads the L2UDB020 sorted output file,
+    not the DB2 table directly)\t—\t...\nZUMDDCU1\t(routes journal records to a DD
+    named SG01IBA — IMS journal, not a direct DB2 write)\t—\t...\nView more\n\nCICS
+    online programs that query UIMT_SG01_CLAIMANT (not batch, but relevant for impact):\n\
+    \nNAVAWAGE — retrieves claim info (base period, employers, dependants, pension)\n\
+    UMODPMTS — retrieves active claimant summary (balance, weeks paid, benefit year
+    end)\nUMODWAGE — retrieves claim info similarly to NAVAWAGE\nWhat the Knowledge
+    Base Does Not Document\nNo batch job is documented as writing to either of these
+    DB2 tables. The writes likely happen through CICS online transactions or through
+    a DB2 load process outside the held batch-job slice. This is a coverage gap, not
+    a statement that no writer exists.\nThe name \"SG01 pipeline\" does not appear
+    in the knowledge base. The closest match is the batch extract job L2PUA003, which
+    heavily queries UIMT_SG01_CLAIMANT in a complex fraud-detection SQL.\nThe name
+    \"new-hire crossmatch\" does not appear in the knowledge base at all. If this
+    is a process that cross-references new-hire wage records against UI claims, it
+    may live outside the LOOPS modules covered here — possibly in the Wage Record
+    or employer-side systems.\nWould you like to dig deeper into any of these areas?\n\
+    \nL2PUA003 fraud-extract SQL breakdown\n\nL2UDB020 → L2FTPRS2 data flow\n\nCICS
+    online access to SG01\n\nRelated DB2 tables (SG02_PAYMENT, SG11_NONMON)"
+- id: v4-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nHere is the
+    documented daily New Hire crossmatch pipeline, synthesized from multiple JCL and
+    COBOL source documents across the Daily CA-7 v2 knowledge space. The ordering
+    below is derived from the data-dependency chain visible in the JCL (each job's
+    inputs are the prior job's outputs); it is not read from a single CA-7 schedule-dependency
+    document, so treat the exact sequencing as the most-likely flow, subject to SME
+    confirmation.\n\nPhase 1 — Ingest & Dedup (upstream)\n\nAn upstream companion
+    job L2NHD011 produces the New Hire Output Detail file (320-byte records, SSN in
+    positions 1–9). The knowledge base references this job as the source of L2NHD001's
+    SORTHIRE input, but L2NHD011 itself is not fully documented in the held slice.\n\
+    L2NHD001.md\n\nProgram DXNHCM29 reads the raw New Hire input and deduplicates
+    by SSN. It produces three output streams :\nDXNHCM29.md\n\nClean file — unique
+    SSN records (or acceptable duplicates where SSN + last name match)\nDuplicate
+    file — true duplicates written aside\nDuplicate SSN Report — printed report of
+    flagged duplicates\nPhase 2 — DB2 Load (ZUMDNHU1 → UIMI0134)\n\nJob ZUMDNHU1 invokes
+    program UIMI0134 (\"Database Load for New Hire\"), which runs daily to load the
+    DB2 table UIMT_NEWHire.\nZUMDNHU1.md\nUIMI0134.md\n For each New Hire detail record
+    it:\n\nValidates Date of Birth, Date of Hire, SSN, Employer FEIN, ZIP codes, and
+    State code (6 checks total)\nDefaults all-zero DOB to 00010101; rejects future
+    hire dates; applies leap-year rules\nInserts validated records into UIMT_NEWHire
+    with a load timestamp\nCounts and reports rejected records\n\nAfter the DB2 load,
+    job ZUMDNHU1 also runs a purge step (DXNHCM02) to delete aged New Hire records
+    from UIMT_NEWHire and produce a New Hire Refund Output Report.\nZUMDNHU1.md\n\
+    DXNHCM02.md\n\nPhase 3 — Account Refresh, Merge & Split (L2NHD001)\n\nJob L2NHD001
+    is the central consolidation and distribution job. It has roughly 10 internal
+    steps :\nL2NHD001.md\n\nL2NHD001 Internal Steps\n\nStep\n\n\t\n\nProgram\n\n\t\
+    \n\nWhat it does\n\n\nDXNHCM05\tDXNHCM05\tRefreshes Pay Account Detail from VSAM
+    Loop-Payment backup → new GDG generation\nDXNHCM07\tDXNHCM07\tRefreshes TRA Account
+    Detail from Check-Laser + No-Pay backups → new GDG generation\nDXNHCM09\tDXNHCM09\t
+    Refreshes No-Pay Account Detail from No-Pay backup → new GDG generation\nSORT4F\t
+    SORT\tCopies DDU Checks backup into a fresh DDU New Detail work file\nDXNHCM06\t
+    DXNHCM06\tRefreshes T4F Account Detail merging with DDU New Detail → new GDG generation\n\
+    DXNHCM04\tDXNHCM04\tConsolidates all four account types (Pay + NoPay + TRA + T4F)
+    into a single 80-byte PAYNOPAY file\nSORTPNP\tSORT\tSorts PAYNOPAY by SSN ascending,
+    date descending\nSORTHIRE\tSORT\tSorts New Hire Output Detail (from L2NHD011)
+    by SSN ascending\nSPLITNH\tSORT\tSplits sorted New Hire into 10 partitions by
+    SSN range\nSPLITPNP\tSORT\tSplits sorted PAYNOPAY into the same 10 SSN-range partitions\n\
+    View more\n\nThe 10-way SSN range split uses fixed boundaries (e.g., 000000000–115502000,
+    115502001–137444750, etc.) to enable parallel downstream processing.\nL2NHD001.md\n\
+    \nPhase 4 — Parallel SSN Crossmatch (ZULDNHR0–ZULDNHR9)\n\nTen parallel jobs —
+    ZULDNHR0 through ZULDNHR9 — each run IMS batch program DSNMTV01 using PSB LOPGMPnn,
+    executing the COBOL matching logic of UIMI0158.\nZULDNHR1.md\nUIMI0158.md\n Each
+    job:\n\nReads one NEWHIRE split file + the corresponding PAYNOPAY split file\n\
+    Walks both sorted files in an SSN merge-match loop:\nSSN match → builds a 479-byte
+    cross-match record combining New Hire detail with claim data (Program Code, Date
+    of Claim, CWE date, source type P1/N2/N3/T3/F4)\nNo match on PAYNOPAY → falls
+    back to IMS DB01 lookup by SSN; if a claim < 35 days old is found, creates a cross-match
+    record with source = DB\nCalculates 8 weekly date-range buckets around the hire
+    date; zeroes out buckets outside the claim window; sets LETTER = N if all 8 are
+    empty\nRetrieves Void Code and Backup Flag from IMS DB02 payment segment\nValidates
+    DOB, hire date, SSN, FEIN, ZIP, state on each output record\nWrites valid records
+    to CMATCH.SPLITnn.DTL (479-byte FB)\nPhase 5 — New Hire LLR / IMS Update (ZULDNHU0–ZULDNHU9)\n\
+    \nTen parallel jobs — ZULDNHU0 through ZULDNHU9 — each run DSNMTV01 as an IMS
+    batch update using PSB LOPUnn.\n05_job_purpose_in...\nZULDNHU6.md\n Each job:\n\
+    \nReads the corresponding CMATCH file from Phase 4\nLooks up VSAM code tables
+    and employee address reference data\nUpdates IMS databases (LOPDnnnn / LOPXnnnn)
+    with crossmatch results\nProduces multiple outputs:\nBPC174–BPC179 — Benefit Plan
+    Carrier transaction files (six separate files)\nBTCHJRL4 — Batch journal\nPrimary
+    output and report files\n\nEach ZULDNHU* job has a CA-7 recovery trailer that
+    DEMANDs a backout job (ZUL06BUn) on any abend.\nZULDNHU6.md\nZULDNHU0.md\n\nPhase
+    6 — TRA Remarks Generation (UIMI0147)\n\nProgram UIMI0147 (run from a ZULDNHU*
+    job context) generates IMS remark records in LOOPDB16 for TRA crossmatch conflicts,
+    populating \"DATE OF HIRE:\", employer name/FEIN, and hire-related fields for
+    investigator review.\nUIMI0147.md\n\nSummary Pipeline Diagram\nL2NHD011 (upstream)\
+    \  →  DXNHCM29 (dedup)\n                              │\n                    ZUMDNHU1
+    (DB2 load + purge)\n                              │\n                    L2NHD001
+    (refresh → merge → sort → 10-way split)\n                         ╱         ╲\n\
+    \              NEWHIRE.SPLIT*    PAYNOPAY.SPLIT*\n                         ╲ \
+    \        ╱\n              ZULDNHR0–9 (parallel SSN crossmatch → CMATCH files)\n\
+    \                              │\n              ZULDNHU0–9 (parallel IMS update
+    → BPC files + journals)\n\nKey Data Stores Touched\nNew Hire Pipeline — Data Stores\n\
+    \nStore\n\n\t\n\nType\n\n\t\n\nRead/Write\n\n\t\n\n...\n\n\nUIMT_NEWHire\tDB2\t
+    Write (INSERT)\t...\nUIMT_NH_CROSSMATCH\tDB2\tRead (online inquiry)\t...\nLOOPDB01
+    (DB01)\tIMS\tRead\t...\nLOOPDB02 (DB02)\tIMS\tRead\t...\nLOOPDB16\tIMS\tWrite\t\
+    ...\nLOPDnnnn / LOPXnnnn\tIMS\tRead+Write\t...\nPay/NoPay/TRA/T4F GDG files\t\
+    Sequential\tRead+Write\t...\nNEWHIRE/PAYNOPAY split files\tSequential\tWrite then
+    Read\t...\nCMATCH split files\tSequential\tWrite then Read\t...\nBPC174–BPC179\t\
+    Sequential\tWrite\t...\nView more\nWhat the Knowledge Base Does Not Document\n\
+    How the raw new hire file arrives — the ingest from the National Directory of
+    New Hires or state W-4 feed is outside the held code slice\nJob L2NHD011 — referenced
+    as the New Hire Output Detail source but not fully documented\nThe batch job that
+    populates UIMT_NH_CROSSMATCH — the CICS programs (TAG001, LOBCN100, LOBDN150)
+    read and update it, but the batch job that initially inserts crossmatch records
+    into this DB2 table is not explicitly documented in the held slice\nDownstream
+    consumers of the BPC files — these Benefit Plan Carrier transaction files feed
+    further processing outside the LOP batch boundary\nWhat would you like to explore
+    next?\n\nCross-match business rules detail\n\nNew Hire record layout\n\nOnline
+    inquiry flow\n\nCreate a Word document of this walkthrough"
+- id: v4-Q3
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is well-documented
+    across multiple programs. The answer spans the batch crossmatch pipeline (program
+    UIMI0147), the IVR system (LOI6FUN6), and several CICS online screens. Here's
+    the full picture, synthesized from multiple source documents — all citations below
+    are from retrieved knowledge-base content.\n\nWhere the Return-to-Work Date Lives\n\
+    \nThe RTW date is stored in two places depending on claim type:\n\nTable\n\nStore\n\
+    \n\t\n\nField\n\n\t\n\nFormat\n\n\t\n\n...\n\n\nIMS LOOPDB01 — DB01 (Claim Basic)
+    segment\tDB01-DATE-RETURN-WORK\tInternal packed F6 (YYYYMMDD); zero = no date\t\
+    ...\nDB2 TNPV_CLAIM\tDTE_RETURN_WORK\tYYYY-MM-DD; 0001-01-01 = null sentinel\t\
+    ...\nView more\n\nOn CICS screens (e.g., LOH3C015), the date is displayed by converting
+    DB01-DATE-RETURN-WORK from F6 to display format when it's > 0; if zero, the field
+    displays as zero.\nLOH3C015-cbl.json\n\nBatch Crossmatch RTW Update — UIMI0147
+    (paragraph 2300-UPDTE-RTW-DB01)\n\nThis is the core batch logic, run inside the
+    ZULDNHU0–9 parallel jobs. The update only fires for non-TRA claims (source ≠ T3)
+    and only when the existing DB01-DATE-RETURN-WORK is zero (no RTW date currently
+    on file).\nUIMI0147.md\n\nPrecondition: Read Additional Claim Segments (DB10)\n\
+    \nBefore making the RTW decision, the program reads all DB10 (Additional Claim)
+    segments under the claimant's DB01 parent using GNP (Get Next in Parent) calls.
+    For each DB10 found, it captures DB10-DATE-ADD-CLAIM and DB10-SEP-CODE-ADD. Two
+    switches track the results:\n\nFOUND-10-SW — Y if any DB10 segment exists, N if
+    none\nDOA-FOUND-SW — Y if a valid date of additional claim was found (non-blank
+    filler), N if not\nDecision Tree\n\nThe decision logic in 2300-UPDTE-RTW-DB01
+    evaluates the following conditions in order :\nUIMI0147.md\n\nRTW Update Decision
+    Rules — UIMI0147 Paragraph 2300-UPDTE-RTW-DB01\n\n#\n\n\t\n\nCondition\n\n\t\n\
+    \nAction\n\n\t\n\n...\n\n\n1\tFOUND-10-SW = 'N' (no DB10 segment exists)\tRe-establish
+    parent; convert hire date to F6; set DB01-DATE-RETURN-WORK = hire date; REPL DB01\t\
+    ...\n2\tDOA-FOUND-SW = 'N' (DB10 exists but no valid additional claim date)\t\
+    Same as #1 — set RTW to hire date\t...\n3\tHM-DATE-HIRE-SAVE = 0 (hire date is
+    zero/missing)\tRe-establish parent; skip update\t...\n4\tWS-DATE-ADD-CLAIM > DATE-SAVE
+    (additional claim date is after hire date)\tSet RPT-RTW-SW = 'Y', ZERO-SW = 'Y';
+    write RTW exception report entry (3060-RTW-RPT-NH); re-establish parent; skip
+    update\t...\n5\tOtherwise (hire date ≥ additional claim date)\tConvert hire date
+    to F6; set DB01-DATE-RETURN-WORK = hire date; re-establish parent; REPL DB01\t\
+    ...\nView more\n\nIn plain language: the batch job sets the RTW date to the New
+    Hire hire date, unless:\n\nThe hire date itself is zero/missing\nThe claimant
+    filed an additional claim after the hire date (meaning they may have become unemployed
+    again — updating RTW would be incorrect)\nThe claim already has an RTW date on
+    file (the entire 2300-UPDTE-RTW-DB01 path is only reached when DB01-DATE-RETURN-WORK
+    = 0)\nWhen RTW Is Not Updated: Exception Report + Special Remark\n\nWhen condition
+    #4 fires (additional claim date > hire date), two things happen :\nUIMI0147.md\n\
+    \nRTW Exception Report — a line is written to RTW-RPT-FILE containing SSN, Program
+    Code, Date of Claim, FEIN, hire date, reported date, employer name, additional
+    claim date, and separation code\nSpecial IMS Remark — paragraph 3067-CREATE-REM-SEG
+    inserts a DB16 remarks segment titled NH RTW NOT UPDATED with text like:\n\nNEW
+    HIRE DATE OF HIRE: MM-DD-YYYY WITH [FEIN] [EMPLOYER NAME] NOT UPDATED TO CLAIM
+    BASIC SINCE ADDITIONAL DATED MM-DD-YYYY\n\nTRA Claims (Source = T3) — Different
+    Path\n\nFor TRA claims, UIMI0147 does not use the IMS DB01 DATE-RETURN-WORK directly.
+    Instead, it queries DB2 TNPV_CLAIM.DTE_RETURN_WORK for the active claim. If the
+    result is 0001-01-01 (null sentinel), the internal field is set to zero; otherwise
+    the DB2 date is converted to F6 format. This value then drives the letter-generation
+    decisions, but the batch program does not execute the 2300-UPDTE-RTW-DB01 paragraph
+    for T3 sources — it skips the IMS RTW update entirely.\nUIMI0147.md\n\nOther Entry
+    Points That Can Set the RTW Date\n\nBeyond the batch crossmatch, the RTW date
+    can also be written by:\n\nIVR system (LOI6FUN6): When a claimant calls the IVR
+    and reports a return-to-work date > 0, the value from IVR-IN-RETURN-TO-WORK is
+    copied directly into DB01-DATE-RETURN-WORK and a REPL is issued against LOOPDB01.
+    If the REPL fails, problem code F6RP is returned to the IVR.\nLOI6FUN6-cbl.json\n\
+    CICS screen DXCC121S (basic claim entry): Converts the entered RTW date from display
+    format (F1/MMDDYY) to internal F6 and stores it in DB01-DATE-RETURN-WORK.\nCICS
+    screen LOAK025S: Converts RTW from F2 format to F6 and stores on the basic claim
+    segment.\nLOAK025S-cbl.json\nCICS screen LOH3C015 (conversation C015/C016): Maps
+    the computed RTW date (WS-COMP-DATE-RTWI) to the DB01 segment during claimant
+    updates.\nLOH3C015-cbl.json\nSummary\n\nThe batch new-hire crossmatch (in UIMI0147)
+    is the only path that automatically stamps the hire date as the RTW date. Its
+    guard conditions are:\n\nSource is not T3 (non-TRA)\nExisting DB01-DATE-RETURN-WORK
+    is zero (no RTW already on file)\nHire date is not zero\nHire date is on or after
+    the most recent additional claim date (or no additional claims exist)\n\nIf all
+    four hold, DB01-DATE-RETURN-WORK in IMS LOOPDB01 is set to the hire date via an
+    IMS REPL call. Otherwise, the RTW is left alone and the conflict is documented
+    via the RTW exception report and the NH RTW NOT UPDATED remark.\n\nWould you like
+    to dive deeper into a related area?\n\nLetter generation logic in UIMI0147\n\n\
+    Crossmatch remark details\n\nCICS screens (LOBDN150 / LOB8N250)"
+- id: v4-Q4
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is an
+    excellent architecture question with a clear two-part answer from the documented
+    source code. Here's what the knowledge base shows, synthesized across multiple
+    programs.\n\nPart 1: How LOOPS Applies the Pension Reduction at Payment Time\n\
+    \nLOOPS applies pension as a simple dollar-for-dollar subtraction from the Weekly
+    Benefit Amount (WBA), applied after earnings reductions but before garnishment
+    and tax withholding. The pattern is consistent across every documented payment
+    path:\n\nThe core formula (per certification week):\n\nAdjusted WBA (AWBA) = WBA
+    − Pension Amount\n\nIf Pension ≥ WBA → AWBA is set to zero; no benefit is payable
+    for that week. Garnishment, tax withholding, and further deductions are all skipped.\n\
+    LO9JC23R-cbl.json\nIf Pension < WBA → AWBA = WBA − Pension. Processing continues
+    to garnishment deduction, then tax withholding.\nLO9JC23R-cbl.json\n\nWhere this
+    logic runs (in the documented programs):\n\nTable\n\nContext\n\n\t\n\nProgram\n\
+    \n\t\n\nNotes\n\n\nWeekly Certification (CICS)\tLOAI021S\tApplies per-week: TWA-AWBA1
+    = TWA-WBA1 − TWA-PEN1, then TWA-AWBA2 = TWA-WBA2 − TWA-PEN2; totals both weeks\n\
+    Payment Processing (CICS)\tDXCP020S, DXCP021S\tSame per-week subtraction using
+    TWA-PEN1/TWA-PEN2\nEUB Batch Projection\tLO9JC23R\tUses WRK-PENS against WS-WBA1
+    each week\nPayment Recalculation\tDXCBD53S, DXCD072S\tAWBA = WBA Pay − Pension
+    Deduction\nPayment Inquiry (display-only)\tDXCA204S\tAWBA-AMT = DB02-WBA-PAY −
+    DB02-PENSION-AMT; if negative, displays zero\nVoid/Reissue\tWWCP042S\tSame subtraction
+    on recalculated payments\nView more\n\nFor two-week certifications, pension is
+    applied independently to each week, and the totals are summed afterward: Total
+    AWBA = Week 1 AWBA + Week 2 AWBA.\nLOAI021S-cbl.json\nLOAK025S-cbl.json\n\nPart
+    2: Does LOOPS Compute the Weekly Amount from Pension Details?\n\nNo — in the documented
+    programs, LOOPS does not prorate or compute a weekly pension reduction amount
+    from raw pension details (monthly amount, lump sum, etc.). LOOPS consumes a pre-determined
+    weekly dollar amount that is already stored on the claim.\n\nHere's how the pension
+    amount gets onto the claim:\n\nNon-Monetary Determination (Issue Code 15): A staff
+    member enters a pension amount on the non-monetary determination screen (PENSION-AMTI).
+    Program DXCD061S (paragraph 7120-NON-PRIM-ISS-15) stores that screen value directly
+    into the basic claim segment field DB01-PENSION-AMT and sets the Pension Indicator
+    (DB01-PENSION-IND).\nDXCD061S-cbl.json\nWWCD061S-cbl.json\n\nPension Indicator
+    values (from DXCP151S):\n\n0 = No pension\n1 = Fixed amount (pension start date
+    equals claim date)\n2 = Table-based / fixed amount on basic record (pension start
+    date ≠ claim date)\n3 = Table or zero\n\nAt payment time, the system looks up
+    the pension amount based on the indicator:\n\nIf indicator = 1 → uses DB01-PENSION-AMT
+    directly from the basic segment\nIf indicator = 2 → first checks a temporary pension
+    table for the claim week; if no entry found, defaults to DB01-PENSION-AMT from
+    the basic segment\nIf indicator = 3 → checks the pension table; if no entry found,
+    uses zero (not the basic segment amount)\n\nCritically: in none of these paths
+    does LOOPS perform arithmetic on a monthly pension, an annual pension, or a lump
+    sum to derive the weekly offset. The field DB01-PENSION-AMT is whatever dollar
+    amount was entered on the non-monetary determination screen. Any proration or
+    conversion from raw pension source data to a weekly offset amount happens outside
+    LOOPS — historically in the Excel-based manual process you described, and in the
+    future via the replacement pension spec's SG01 pipeline.\n\nSummary\n\nLOOPS is
+    a pension-amount consumer, not a pension-amount calculator. It stores a pre-computed
+    weekly offset on DB01-PENSION-AMT, subtracts it dollar-for-dollar from the WBA
+    each week, and floors the result at zero. The intelligence about how to derive
+    that weekly figure from raw pension data (monthly amounts, lump sums, employer
+    contribution percentages, start/end dates) lives entirely outside the payment
+    engine — today in the staff's manual Excel process, and in the future in whatever
+    the replacement spec implements.\n\nThis is important for the new spec's design:
+    the replacement system must deliver a ready-to-subtract weekly dollar amount into
+    the PENSION-AMT field (or its DB2 equivalent SG01_PENSION_AMT), because LOOPS
+    payment programs will not interpret or transform it further.\n\nWould you like
+    to explore any related area?\n\nPension table lookup logic\n\nPension-garnishment
+    interaction\n\nUIMI0440 offset arithmetic"
+- id: v4-Q5
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is a rich
+    question that touches two separate VERIS-mediated services and several storage
+    endpoints. Here's what the documented programs show, synthesized across the CICS
+    and Daily CA-7 knowledge spaces.\n\nThe External Service: VERIS\n\nLOOPS does
+    not implement its own SSN validation or deceased-detection logic. Both functions
+    are delegated to an external service called VERIS (the SSA — Social Security Administration
+    — verification system). VERIS is called with the claimant's SSN and Date of Birth
+    and returns a rich response including validation details and a key return code.\n\
+    SARN114S-cbl.json\n\nVERIS is accessed through two different interface modules
+    depending on context:\n\nTable\n\nContext\n\n\t\n\nModule\n\n\t\n\nTransport\n\
+    \n\t\n\n...\n\n\nCICS (online)\tVERISO (dynamically called)\tMQ queue LAK2LDXP.VERIS.REQUEST\t\
+    ...\nBatch\tVERISB (statically called)\tMQ request/reply queues\t...\nView more\n\
+    Part 1: SSN Validation\nOnline — Claim Registration\n\nWhen a new UI claim is
+    being filed, programs DXCC111S and DXCC122S invoke VERISO after all screen-level
+    edits have passed. The SSN (SSNI) and Date of Birth (DATE-BIRTHI) are sent to
+    VERIS, and the response returns :\nDXCC111S-cbl.json\n\nVERIS-COMPCODE — completion
+    code (0 = success)\nVERIS-REASON — reason code\nVERIS-SSN-RETCDE — the SSN-specific
+    return code (the critical field)\nDOB code, DOB string, age range, SSN assignment
+    range, and state of issuance\nOnline — Standalone SSN Verification Screen\n\n\
+    Program LO8JSSNV (transaction LO8J) provides a dedicated CICS screen for SSN verification.
+    It validates that the SSN is numeric, validates DOB is numeric, then submits both
+    to VERIS via the MQ queue LAK2LDXP.VERIS.REQUEST with EBCDIC-to-ASCII conversion.\n\
+    LO8JSSNV-cbl.json\n\nBatch — SSN Validity Re-Verification\n\nProgram UIMI0072
+    performs daily batch re-verification of SSN validity records that previously failed
+    VERIS or whose dependents have pending re-checks. It selects active records from
+    the UIMV_SSN_VALIDITY DB2 table (Table-22) where History_Indicator = '0' and either
+    the MQ Completion Code ≠ 0 or any dependent's SSN Validation Code = '4'. It calls
+    VERISB for each, updates the validity record, and writes results to a Validity
+    output file.\nUIMI0072.md\n\nInterstate SSN Inquiry (Separate System)\n\nProgram
+    INPOIQ00 handles interstate SSN inquiries within the NJ ICON system — this is
+    a different function. It sends SSN inquiries to a Florida hub for cross-state
+    data retrieval and stores results in the SSN Holding File (INFLIQ00 VSAM). This
+    is not the VERIS-based SSN validation; it's a separate inter-state information
+    exchange.\nINPOIQ00-cbl.json\n\nNote on \"ICON's UIQ\": The knowledge base documents
+    INPOIQ00 (transaction IBIQ) as ICON's SSN inquiry program. The literal name \"\
+    UIQ\" does not appear in retrieved sources. INPOIQ00 may be what your spec references,
+    but I cannot confirm the name \"UIQ\" from the knowledge base — please verify
+    with the ICON team.\n\nPart 2: Deceased Verification\n\nDeceased detection in
+    LOOPS is a by-product of the VERIS SSN call, not a separate service. The magic
+    return code is:\n\nVERIS-SSN-RETCDE = '00000110'  →  SSN belongs to a retired
+    or deceased individual\n\nThree Sources of Deceased Determination\n\nProgram UIMI0726
+    (Accelerated Refunds Daily Extract) illustrates the full three-layer deceased
+    check, applied per-claimant :\nUIMI0726.md\n\nInput record's existing deceased
+    indicator — if already non-zero, claimant is flagged deceased immediately\nSSN
+    Retired table lookup — if the claimant's SSN is found in UIMV_SSN_RETIRED (Table-23),
+    claimant is flagged deceased with the stored date of death\nVERIS death verification
+    call — calls VERISB with SSN + DOB; if VERIS-SSN-RETCDE = '00000110', the claimant
+    is confirmed deceased\n\nIf any of these three sources confirms deceased status,
+    the Deceased Flag is set to 'Y'.\nUIMI0726.md\n\nVERIS Deceased Response Fields\n\
+    \nWhen VERIS confirms deceased :\nDXCC111S-cbl.json\nUIMI0726.md\nDXCC122S-cbl.json\n\
+    \nVERIS-RIDDOD — Date of Death (extracted into MM, DD, CCYY components)\nVERIS-RIDDOB
+    — Date of Birth\nPart 3: Where Do the Results Land?\nDB2 Tables\nTable\n\nTable\n\
+    \n\t\n\nKey Fields\n\n\t\n\nWhat It Stores\n\n\t\n\n...\n\n\nUIMV_SSN_VALIDITY
+    (Table-22)\tSSN, Program Code, Date of Claim\tSSN verification results: MQ completion/reason
+    codes, SSN return code, DOB code, dependent SSN validation codes\t...\nUIMV_SSN_RETIRED
+    (Table-23)\tSSN, Program Code, Date of Claim\tRetired/deceased SSN records: first
+    name, last name, DOB, Date of Death, benefit payment zip, lump sum zip\t...\n\
+    View more\nOutput Records and Indicators\n\nIn batch extract programs like UIMI0726,
+    the results are written to the output master record :\nUIMI0726.md\n\nAR-DECEASED-IND
+    — set to 1 if deceased, 0 if not\nAR-DECEASED-DATE — populated from WS-DATE-DEATH-VERIS
+    if deceased, zeroed if not\nAudit Files\nVERIS Copy File (VERISCPY) — the full
+    VERIS response record is written here for every claimant confirmed deceased, creating
+    an audit trail\nValidity File — UIMI0072 writes a comprehensive output record
+    per re-verified SSN including all return codes, dependent validation codes, and
+    claimant name\nBatch Error Resilience\n\nThe batch VERIS interface (UIMI0726,
+    UIMI0072) includes auto-disable logic :\nUIMI0726.md\n\n20 consecutive MQ connection
+    errors (code 2033) → VERIS disabled for remainder of run\n75 total VERIS errors
+    of any type → VERIS disabled for remainder of run\nSummary for Your Spec\n\nSSN
+    validation and deceased detection in LOOPS are both mediated by a single external
+    service: VERIS (SSA verification), accessed via MQ queues. LOOPS sends SSN + DOB;
+    VERIS returns a return code that covers both validity and deceased status ('00000110'
+    = retired/deceased). Results land in two DB2 tables (UIMV_SSN_VALIDITY for validation
+    details, UIMV_SSN_RETIRED for deceased/retired records), on output master record
+    indicators (AR-DECEASED-IND, AR-DECEASED-DATE), and in a VERIS copy audit file.
+    LOOPS does not perform SSN validation or deceased detection internally — if your
+    replacement spec is routing the SSN check through a different upstream system
+    and leaving deceased checks out of scope for now, be aware that in the current
+    system the same VERIS call handles both, and downstream programs like UIMI0726
+    expect the UIMV_SSN_RETIRED table to be populated for their three-layer deceased
+    check.\n\nWould you like to dig deeper into any of these areas?\n\nOnline claim
+    registration VERIS flow\n\nBatch SSN re-verification (UIMI0072)\n\nDeceased detection
+    in Accelerated Refunds extract\n\nInterstate SSN inquiry (INPOIQ00)"
+- id: v4-Q6
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nGood question
+    — and an important one to get right before your integration spec solidifies. I
+    can identify the program, but I need to flag two discrepancies between what you
+    described and what the source code documents.\n\nThe Program: UMOD077S\n\nThe
+    CICS program UMOD077S handles the NIME (Non-Monetary Identity) reversal transaction
+    — this is the MQ-based \"writeback\" interface that external systems use to reverse
+    an identity block (Issue 18) on a LOOPS claim. It receives requests via MQ, processes
+    them against the IMS claim database and the DB2 UIMT_RSA_NONMON table, and sends
+    a reply message back via MQ.\nUMOD077S-cbl.json\n\nThe cancelled-claim check is
+    in paragraph 2211-CHECK-CLAIM: it reads the Cancellation Indicator (DB01-CANC-CLAIM)
+    from the retrieved IMS basic claim record. If the value is '1', processing is
+    immediately rejected with status CHECK-CLAIM-ERROR, the return message is set
+    to 'CANCELLED CLAIM', all pending database changes are rolled back via SYNCPOINT
+    ROLLBACK, and the error is sent back on the MQ reply queue.\nUMOD077S-cbl.json\n\
+    \nThere is also a CICS screen equivalent: DXCD077S, which does the same cancelled-claim
+    check for Identity Non-Monetary Reversal requests entered interactively. It displays
+    error message 0201 (\"Claim Has Been Cancelled\") on the screen.\nDXCD077S-cbl.json\n\
+    \nTwo Discrepancies to Verify\n\nMessage text: Your spec says the message starts
+    with \"ERROR: CANCELLED CLAIM\". The documented return message in UMOD077S is
+    'CANCELLED CLAIM' — without the ERROR: prefix. Other UMOD077S error messages do
+    use the ERROR: prefix (e.g., 'ERROR: SSN PASSED IN IS ZEROS', 'ERROR: DO NOT SEND
+    PAYMENT ON THIS CLAIM'), but the cancelled-claim message specifically does not,
+    per the retrieved source.\nUMOD077S-cbl.json\n Either the production code adds
+    the prefix in a layer not covered by the knowledge base, or your spec may have
+    the prefix wrong — worth checking directly.\n\nResponse code 7: The knowledge
+    base does not document a numeric \"response code 7\" for UMOD077S. The program
+    uses text-based return messages in W03-RETURN-MESSAGE, not numeric response codes.
+    It does set internal error classifications (DATA-ERROR, CHECK-CLAIM-ERROR, DATE-ERROR,
+    IMS-ERROR), but these are not numeric codes exposed to the caller. If your interface
+    documentation shows a numeric code 7, it may originate from a wrapper, middleware,
+    or MQ message header — but that mapping is not in the held UMOD077S source.\n\n\
+    Documented NIME Error/Return Messages\n\nHere is the full set of return messages
+    documented in UMOD077S, synthesized from multiple rules across the program. This
+    is what the MQ reply carries back to the caller :\nUMOD077S-cbl.json\n\nUMOD077S
+    NIME Return Messages\n\n#\n\n\t\n\nReturn Message Text\n\n\t\n\nCondition\n\n\t\
+    \n\n...\n\n\n1\tERROR: SSN PASSED IN IS ZEROS\tSSN input equals zero\t...\n2\t
+    CLAIM IN USE, TRY AGAIN LATER\tIMS lock conflict (error code 9999) — another user/process
+    holds the record\t...\n3\tERROR: PROGRAM CODES 45, 50, & 51 ARE NOT ALLOWED\t\
+    Program Code is '045', '050', or '051'\t...\n4\tCLAIM NOT FOUND ON RSA_NONMON\t
+    No active record in UIMT_RSA_NONMON for SSN + Program Code + Date of Claim (status
+    = 0, informational — not treated as error)\t...\n5\tERROR: P1-STATUS-CODE=[code]:2210-GET-CLAIMANT\t
+    IMS retrieval of basic claim record failed\t...\n6\tCANCELLED CLAIM\tCancellation
+    Indicator (DB01-CANC-CLAIM) = '1'\t...\n7\tERROR: DO NOT SEND PAYMENT ON THIS
+    CLAIM\tBoth LA Indicator = '1' AND Payment Trigger = 'Y' on the claim\t...\n8\t
+    ERROR: CURR CWE DATE < DOC\tCurrent Week Ending date ≤ Date of Claim + 5 days\t\
+    ...\n9\tERROR: CWE IS NOT A SATURDAY\tCWE date does not fall on a Saturday\t...\n\
+    10\t(IMS error format)\tVarious IMS update failures during non-monetary segment
+    update, remarks insert, claimant update, or RSA_NONMON table update\t...\nView
+    more\n\nAll error conditions (except the informational #4) trigger a SYNCPOINT
+    ROLLBACK before the MQ reply is sent, ensuring no partial updates persist.\nUMOD077S-cbl.json\n\
+    \nWhat Is Not in the Knowledge Base\nA numeric response code table mapping text
+    messages to integer codes. If your upstream system is receiving code 7, that mapping
+    lives outside the UMOD077S source — possibly in middleware, an MQ message header
+    convention, or the calling system's translation layer.\nThe MQ reply queue name
+    is environment-specific (the program selects it dynamically).\nAny additional
+    error conditions that might be produced by programs or layers outside the held
+    code slice.\n\nI'd recommend verifying the \"response code 7\" / \"ERROR:\" prefix
+    directly against the MQ message layout your integration partner is using — the
+    LOOPS side returns free-text in W03-RETURN-MESSAGE, so any numeric code would
+    be a wrapper convention.\n\nWant me to dig deeper into any of these?\n\nDXCD077S
+    screen-based reversal flow\n\nComplete NIME validation sequence\n\nSuccessful
+    NIME reversal writeback details"
+- id: v4-Q7
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nGreat question
+    for the Connect migration — channel identification in LOOPS is a bit more nuanced
+    than it looks at first glance, because the channel is encoded differently depending
+    on which layer of the system you're reading. The knowledge base documents two
+    distinct mechanisms, plus a composite encoding on the payment record. Here's the
+    full picture, synthesized from multiple source programs.\n\nHow LOOPS Stamps the
+    Channel at Certification Time\n\nWhen a weekly certification flows through the
+    CICS certification processing path, the program DXCP021S receives a processing
+    mode indicator (SPAD-Z-MODE-WS) that identifies the inbound channel :\nDXCP021S-cbl.json\n\
+    \n'W' = Web\n'I' = IVR\n'F' = Fax\n\nThis mode drives different initialization
+    logic (e.g., the IVR application LOI5FUN5 restores its own screen data and skips
+    certain defaults). However, this mode indicator is not what gets written to the
+    certification record as a persistent channel marker.\n\nWhat does get persisted
+    are two fields on the BP88 payment certification record :\nDXCP026S-cbl.json\n\
+    \nBP88-TERMINAL-ID-CERT — set to '7777' for all automated channels (Web, IVR,
+    and Voice)\nBP88-OPERATOR-ID-CERT — set to 9000 specifically for Web certifications;
+    IVR/Voice uses its own operator ID (not 9000)\n\nThis is set in DXCP026S (the
+    payment-processing CICS program), which explicitly assigns Terminal ID '7777'
+    when the channel is Voice (APL-LOGICAL-CONV-ID = 'VP1A', 'VP1B', or 'IVR '), Web
+    (SPAD-Z-MODE-WS = 'W'), or IVR (SPAD-Z-MODE-WS = 'I').\n\nHow to Tell IVR from
+    Web from Manual in the Data\n\nEvery downstream program in the knowledge base
+    uses the same two-field decision tree on the certification record. Here it is,
+    documented consistently across DXCBDA2R, DXCBD12R, DXCBD12T, UIMI0440, and UIMI0443
+    :\nDXCBDA2R.md\nDXCBDA2R.cbl.md\nDXCBD12T.md\nDXCBD12R.md\nUIMI0443.md\nUIMI0440.md\n\
+    \nWeekly Certification Channel Classification Rules\n\nChannel\n\n\t\n\nTerminal
+    ID (\n\n\t\n\nBP88-TERMINAL-ID-CERT\n\n\t\n\n...\n\n\nWEB (online self-service)\t\
+    '7777'\t= 9000\t...\nPHONE / IVR (telephone)\t'7777'\t≠ 9000\t...\nManual / P100
+    (staff-assisted)\t≠ '7777'\t(any)\t...\nView more\n\nThe key takeaway: Terminal
+    ID '7777' is shared by both Web and IVR — it just means \"not a physical terminal.\"\
+    \ The Operator ID is the differentiator: 9000 = Web, anything else with '7777'
+    = IVR/Phone.\n\nUIMI0440 encodes this into a single phone-indicator field (F70-PHONE-IND)
+    :\nUIMI0440.md\n\n'2' = Operator ID 9000 + Terminal ID 7777 (Web / SIM 926 automated)\n\
+    '1' = Terminal ID 7777, Operator ID ≠ 9000 (Phone / IVR)\n'0' = Terminal ID ≠
+    7777 (In-person / manual)\nThe Badge Indicator — A Second Encoding on Payment
+    Records\n\nAfter payment processing, the Badge Indicator (SG02-BADGE-IND) on the
+    IMS payment segment encodes both the certification method and the payment delivery
+    method in a single composite digit, documented in NAVAPMTS :\nNAVAPMTS-cbl.json\n\
+    \nBadge Indicator Encoding (Dual-Purpose)\n\nBadge Indicator\n\n\t\n\nCertification
+    Method\n\n\t\n\nPayment Method\n\n\n0\tMANUAL\tCHECK\n1\tIVR\tCHECK\n2\tWEB\t\
+    CHECK\n3\tMANUAL\tDIRECT DEPOSIT\n4\tIVR\tDIRECT DEPOSIT\n5\tWEB\tDIRECT DEPOSIT\n\
+    6\tMANUAL\tDEBIT CARD\n7\tIVR\tDEBIT CARD\nView more\n\nSo if you're querying
+    payment history (e.g., through the NAVAPMTS inquiry program), the Badge Indicator
+    is the field to use. If you're reading raw certification records from the PAYVSAM
+    or NOPAY files (as DXCBDA2R does), it's the Terminal ID + Operator ID pair.\n\n\
+    What This Means for the Connect Migration\n\nFor your Connect integration, the
+    critical implication is:\n\nIVR certifications today are distinguished from Web
+    solely by Operator ID — the IVR system does not use Operator ID 9000. If Connect
+    replaces the IVR and your new channel also stamps 9000, every downstream reporting
+    program (DXCBDA2R, DXCBD12R, DXCBD12T, UIMI0440, UIMI0443) will classify those
+    certs as Web, not Phone. You'll need to either assign a distinct Operator ID to
+    Connect-originated certs, or update the downstream classification logic.\n\nCheck
+    series is also channel-dependent — DXCP026S assigns check series 10 for IVR/Voice
+    and 11 for Web.\nDXCP026S-cbl.json\n If Connect enters through the Web path, it
+    gets series 11 instead of 10.\n\nThe Badge Indicator combines certification channel
+    with payment delivery method. If Connect certifications flow through the Web processing
+    mode, they'll get badge values 2/5 (WEB + CHECK/DIRECT DEPOSIT) rather than 1/4/7
+    (IVR). This affects any system reading payment history.\n\nWhat Is Not in the
+    Knowledge Base\nThe specific Operator ID that the current IVR system assigns —
+    the docs say \"not 9000\" but don't name the value. This would be in the IVR middleware
+    configuration or the LOI5FUN5 / LOI7FUN7 transaction setup.\nWhether there are
+    additional downstream consumers of Terminal ID / Operator ID / Badge Indicator
+    outside the held code slice.\nWhat would you like to explore next?\n\nMap the
+    IVR certification processing flow end-to-end\n\nSearch for the IVR-specific Operator
+    ID value\n\nAssess downstream impact if Connect uses Operator ID 9000"
+- id: v4-Q8
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is a rich
+    topic — the knowledge base documents local offices from multiple angles: the claim
+    record, CICS authorization, batch classification, and the municipality relationship
+    tables. Let me synthesize everything.\n\nLocal Office on the Claim Record\n\n\
+    The primary representation is the field DB01-LOCAL-OFF on the IMS basic claim
+    segment (DB01 / LOOPLE01). This is the local unemployment office that \"owns\"\
+    \ the claim. It is set at claim registration time and persists on the record.
+    A large number of programs read it :\nLO99SBLD-cbl.json\nDXCC072S-cbl.json\nMACROLST-cbl.json\n\
+    DXCR032S-cbl.json\nLOAASBLD-cbl.json\nLOH3C015-cbl.json\nLOFQSBLD-cbl.json\nSARN114S-cbl.json\n\
+    LOV1C326-cbl.json\nUIMI0031.md\n\nLO99SBLD — extracts it into T176-LOCAL-OFFICE
+    and SPLIT-LO for numeric/range validation during certification eligibility\nLOAASBLD
+    — copies it into APL-LOCAL-OFFICE and TXT-LOCAL-OFFICE-NUMBER for routing, remarks,
+    and adjudication\nLOFQSBLD — passes it through to the web inquiry response buffer
+    (W03-LOCAL-OFFICE-CODE)\nMACROLST, LOH3C015 — writes it to the DB2 UIMV_CLAIMANT
+    table's CDE_LOCAL_OFFICE field, so the office that originally filed the claim
+    is permanently recorded\nUIMI0031 — stamps it onto payment records as both PR02-LOCAL-OFF-CUR
+    and PR02-RESP-LOCAL-OFF-CUR\nDXCR032S — carries it forward onto refund segments
+    (SF08-REFUND-SCRN-LOCAL-OFF) and CAPS records (CAPS-LOCAL-OFFICE)\n\nThere is
+    also a second local-office field on journal/segment records: Responsible Local
+    Office (RESP-LOCAL-OFF-CUR / RESPLO). At claim registration (SARN114S), the segment
+    prefix gets both :\nSARN114S-cbl.json\n\nLocal Office ← from DB01-LOCAL-OFF (the
+    originating office on the claim)\nResponsible Local Office ← from APL-LOCAL-OFFICE
+    (the processing terminal's office)\n\nThese can differ when a centralized unit
+    or special office processes a claim belonging to another office.\n\nHow Local
+    Office Is Used in Claims Processing\n1. CICS Terminal Authorization (Access Control)\n\
+    \nMultiple CICS programs enforce the rule that a terminal can only process claims
+    from its own local office — unless it's an authorized special unit :\nDXCC072S-cbl.json\n\
+    LOV1C326-cbl.json\n\nDXCC072S, LOV1C326: Compare APL-LOCAL-OFFICE (terminal) against
+    DB01-LOCAL-OFF (claimant). Match → access granted. Mismatch → check special unit
+    authorization table (via LOCAL-OFFICE-CHECK). If not authorized → access denied
+    with error.\n2. Batch Claim Type Classification\n\nThe Responsible Local Office
+    (RESPLO) — not the local office per se — drives claim type classification in the
+    batch journal extract programs (DXCBW30E, DXCBW39E, DXCBW39U, DXCBW30U). The hierarchy
+    is :\nDXCBW30E.md\nDXCBW39E.md\nDXCBW39U.md\nDXCBW38R.md\nDXCBW30U.md\n\nClaim
+    Type Classification By RESPLO And Municipality\n\nPriority\n\n\t\n\nCondition\n\
+    \n\t\n\nClaim Type (STTYPE)\n\n\t\n\n...\n\n\n1\tProgram Code = 11 or 12\t4\t\
+    ...\n2\tRESPLO = 999 or 997\t3\t...\n3\tMunicipality 05500–07599\t1\t...\n4\t\
+    All other\t2\t...\nView more\n\nFor Type 3 claims (RESPLO 999/997), the municipality
+    code is range-validated: if between 01001–76999 it's used as-is; otherwise it
+    defaults to 77777.\nDXCBW30E.md\nDXCBW39E.md\n\n3. Local Office Validation Against
+    Reference Tables\n\nDXCC121S (Claimant Maintenance) validates the Employment Service
+    Office code against Table 112 (Local Offices) in the CODELOOP VSAM file. If the
+    office code is not found, error 474 is raised.\nDXCC121S-cbl.json\n Special rules
+    apply for certain program codes (e.g., Program Code 84 must use ESO = 998).\n\
+    DXCC121S-cbl.json\n\nThe Municipality-to-Local-Office Assignment\n\nThis is directly
+    documented — and it's the heart of what your MUNC replication spec is reflecting.
+    The knowledge base shows two data stores that carry the municipality→local-office
+    mapping, plus a maintenance application:\n\nPrimary: WDPV_E_FIPS_DESCRP (DB2 Table)\n\
+    \nDXCC121S and LOH3C015 document how NJ address processing works :\nLOH3C015-cbl.json\n\
+    DXCC121S-cbl.json\n\nFor NJ addresses, the system queries WDPV_E_FIPS_DESCRP by
+    city name (DES_FIPS_REGION) AND local office (CDE_LOCAL_OFFICE)\nA matching row
+    returns: CDE_MUNICIPAL (municipality code), IDN_FIPS_CITY, IDN_FIPS_COUNTY, IDN_FIPS_STATE\n\
+    If exactly one match → municipality and FIPS codes are auto-assigned\nIf multiple
+    matches for the same city + local office → the system refines by adding CDE_MUNICIPAL
+    to the query\nIf the city is found but the local office doesn't match → a city/local-office
+    mismatch error is displayed, and the user is directed to screen C015 to manually
+    enter the municipality code\nIf duplicate city + local office → error 1505 (ambiguity)\n\
+    Secondary: MUNICIPA VSAM File\n\nWhen the DB2 FIPS search fails, DXCC121S falls
+    back to a browse of the MUNICIPA VSAM file by city name, then compares local office.
+    Each record in this file also carries a local office field.\nDXCC121S-cbl.json\n\
+    \nMaintenance Application: DXAMUNCP / DXAMUNC2 (MUNC Transaction)\n\nThe CICS
+    municipality maintenance screens (MSTMUNC1 through MSTMUNC4) are documented in
+    DXAMUNCP and DXAMUNC2. The detail screen (MSTMUNC4) shows the full municipality
+    record layout :\nDXAMUNC2-cbl.html\nDXAMUNCP-cbl.json\n\nCITY, MUNICIPAL CODE,
+    STATE, TAX MUNICIPAL, COUNTY, LOCAL OFFICE, LOCAL NAME, HEALTH MUNICIPAL, CORPORATE,
+    WIB, COUNTY\n\nSo each municipality row does carry a local office, exactly as
+    your MUNC replication spec shows. The CDE_LOCAL_OFFICE in the DB2 table (WDPV_E_FIPS_DESCRP)
+    and the local-office field in the MUNICIPA VSAM file are the authoritative sources
+    for this assignment.\n\nOut-of-State / Out-of-Region Handling\n\nFor addresses
+    outside NJ :\nDXCC121S-cbl.json\n\nDE, NY, PA → searched in WDPV_E_FIPS_DESCRP
+    by city + state FIPS code (no local office in the key)\nAll other states → assigned
+    default municipality code 09400, all FIPS codes zeroed\nWhat's Not in the Knowledge
+    Base\nWho maintains the WDPV_E_FIPS_DESCRP rows and the MUNICIPA VSAM file — the
+    maintenance screens are documented, but the operational process for when/why rows
+    are added or local-office assignments change is not in the held code slice.\n\
+    The complete list of valid local office codes — Table 112 defines the valid set,
+    but it lives in the CODELOOP VSAM dataset, whose populated values are operations-maintained
+    and outside the knowledge base.\nWhether RESPLO and DB01-LOCAL-OFF can diverge
+    on an existing claim over its lifetime (e.g., through office reassignment) — the
+    registration logic sets them independently, but whether any downstream transaction
+    can update DB01-LOCAL-OFF post-creation would require checking additional CICS
+    update programs beyond the held set.\nWould you like to go deeper on any of these
+    areas?\n\nMunicipality FIPS lookup details\n\nClaim type classification deep dive\n\
+    \nMUNC transaction / maintenance screens"

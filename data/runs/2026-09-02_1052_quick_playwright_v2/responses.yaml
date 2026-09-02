@@ -1,0 +1,383 @@
+responses:
+- id: v2-Q1
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is well-documented
+    across several LOOPS CICS programs. Here's a synthesized walkthrough of the end-to-end
+    logic, confirmed against source. The PWBR and WBR formulas have been verified
+    against DXCD037S source and may be stated as confirmed.\n\nStep 1: Establish the
+    Working WBR\n\nBefore any PWBR math, the system may cap the claimant's WBR at
+    the remaining program balance. If the claimant's WBR exceeds the remaining balance
+    for the applicable program (UI, EB, FSC, or EUB), the working WBR (D072-WBR-PAY)
+    is reduced to the remaining balance. If the balance is already exhausted (zero
+    or negative), no cap is applied and the system proceeds with the original WBR.\n\
+    WWCD072S-cbl.json\n\nStep 2: Calculate the PWBR Threshold\n\nTwo candidate values
+    are computed :\nWWCD072S-cbl.json\n\nOption A: WBR × 1.2 (120% of the Weekly Benefit
+    Rate)\nOption B: WBR + $5.00\n\nThe final PWBR is the greater of Option A and
+    Option B. This ensures that claimants with very low WBR values still get a meaningful
+    earnings disregard (the $5 floor), while claimants with higher WBRs use the 20%
+    formula.\nWWCA041S-cbl.json\nLOIGSBLD-cbl.json\n\nNote: During payment-segment
+    preparation in WWCP028S.cbl and DXCP028S.cbl, a simpler form — WBR + (WBR × 0.20)
+    with truncation — is used solely to classify earnings for transaction code assignment
+    (partial vs. full). The full MAX-of-two-options formula is applied later in WWCD072S.cbl
+    when the actual Weekly Benefit Amount is calculated.\nWWCP028S-cbl.json\nDXCP028S-cbl.json\n\
+    \nStep 3: Classify Earnings & Assign Transaction Codes\n\nBased on the PWBR threshold,
+    the system assigns a Transaction UI Code to the payment segment :\nWWCP028S-cbl.json\n\
+    \nTransaction Code Assignment By Earnings Level\n\nEarnings Level\n\n\t\n\nFirst
+    (Waiting) Week\n\n\t\n\nContinued Week\n\n\nZero earnings\t011 — Full benefit\t
+    017 — Full benefit\nEarnings > 0 but < PWBR\t012 — Partial benefit\t018 — Partial
+    benefit\nEarnings ≥ PWBR\t019 — No benefit payable\t019 — No benefit payable\n\
+    View more\n\nThese base codes may be overridden by extension-program-specific
+    codes (e.g., 111/112/119 for EB, 211/212/219 for FSC, 411/412/419 for EUB, etc.)
+    if the claimant is on an active benefit extension.\nWWCP028S-cbl.json\n\nStep
+    4: Calculate the Weekly Benefit Amount (WBA)\n\nUsing the final PWBR from Step
+    2 :\nWWCD072S-cbl.json\n\nPreliminary WBA = PWBR − Earnings\nCap: If WBA > WBR
+    → set WBA = WBR (the claimant cannot receive more than their full weekly rate)\n\
+    Floor: If WBA < 0 → set WBA = 0 (no negative benefit)\nStep 5: Apply Pension Offset
+    → Adjusted Weekly Benefit Amount (AWBA)\n\nIf the claimant has a pension offset
+    on record :\nWWCD072S-cbl.json\n\nAWBA = WBA − Pension Offset Amount\nIf AWBA
+    ≤ 0 and pension offset > 0 → AWBA is set to $0 and the payment segment backup
+    flag is set to 'C' (indicating the pension fully eliminated the benefit)\nIf AWBA
+    ≤ 0 and pension offset = 0 → AWBA is set to $0 with no special flag (benefit exhaustion
+    unrelated to pension)\nIf AWBA > 0 → the value is accepted as-is\n\nThe AWBA is
+    the final net amount that flows into payment processing.\n\nWorked Example\n\n\
+    Suppose a claimant has WBR = $400 and reports $300 in earnings on a continued
+    week:\n\nOption A: $400 × 1.2 = $480; Option B: $400 + $5 = $405 → PWBR = $480
+    (Option A wins)\nEarnings $300 < PWBR $480 → Transaction Code 018 (partial benefit,
+    continued week)\nWBA = $480 − $300 = $180; $180 < $400 (WBR), so no cap needed\n\
+    If pension offset = $0 → AWBA = $180 (final paid amount)\nSource Programs\nWWCP028S.cbl
+    / DXCP028S.cbl — Payment segment preparation and transaction code assignment (CICS
+    space)\nWWCD072S.cbl — WBA/AWBA calculation with balance caps and pension offset
+    (CICS space)\nWWCA041S.cbl — Weekly Benefit Amount calculation rule summary (CICS
+    space)\nLOIGSBLD.cbl — Web certification PWBR validation (CICS space)\nWould you
+    like to explore a related topic?\n\nEarnings offset details (inferred from source
+    — SME review recommended)\n\nBenefit extension code override logic\n\nBalance-cap
+    scenarios near claim exhaustion"
+- id: v2-Q2
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nYes — the claimant's
+    SSN affects LOOPS behavior in two distinct ways: it determines the day of the
+    week the claimant must certify, and it controls the mail date printed on the check/certification
+    document. There is also a deeper biweekly scheduling group mechanism that uses
+    the last four digits.\n\n1. Certification Day Assignment (SSN Last Digit — Odd/Even)\n\
+    \nFor web and phone certification, the system classifies the claimant's SSN based
+    on its last digit :\nLO99SBLD-cbl.json\n\nEven last digit (0, 2, 4, 6, 8) → Claimant
+    must certify on Tuesday\nOdd last digit (1, 3, 5, 7, 9) → Claimant must certify
+    on Wednesday\n\nIf a claimant attempts to certify on the wrong day (e.g., an odd-SSN
+    claimant certifying on Tuesday), the system sets Error Code 5, which suppresses
+    the second certification week (CWE2) payment eligibility — only the first week
+    remains payable. This is documented in LO99SBLD.cbl (CICS space).\nLO99SBLD-cbl.json\n\
+    \n2. Mail Date Calculation (SSN Last Digit — Odd/Even)\n\nWhen the check-printing
+    programs (UIMI0440, UIMI0443, UIMI0442) calculate the mail date printed on the
+    certification document, they use the last digit of the SSN to stagger mailing
+    across different days :\nUIMI0440.md\nUIMI0443.md\nUIMI0442.md\n\nMail Date Offset
+    By SSN Parity And Program Type\n\nProgram Type\n\n\t\n\nSSN Last Digit\n\n\t\n\
+    \nDelta Days from CWE\n\n\t\n\n...\n\n\nRegular UI\tEven (0,2,4,6,8)\t+3\t...\n\
+    Regular UI\tOdd (1,3,5,7,9)\t+2\t...\nExtended (FSC/TUCX/TUCY/TUCZ/EB)\tEven (0,2,4,6,8)\t\
+    +5\t...\nExtended (FSC/TUCX/TUCY/TUCZ/EB)\tOdd (1,3,5,7,9)\t+4\t...\nView more\n\
+    \nThe base date is the latest Certification Week Ending (CWE) date — CWE Date
+    4 if present, else CWE Date 3. The delta days are added via the external date
+    arithmetic routine DAT2K, and the result is formatted as MM/DD/YY for field F9-MAIL-DTE.\n\
+    UIMI0440.md\nUIMI0443.md\n\nFor the BC-9 form (no-pay scheduling), an additional
+    second mail date offset is also applied: +17 days for even SSN, +16 days for odd
+    SSN from the CWE base.\nUIMI0326.md\n\n3. Biweekly Certification Schedule Group
+    (SSN Last Four Digits)\n\nA separate, deeper scheduling mechanism uses the last
+    four digits of the SSN to assign claimants to one of two groups for the biweekly
+    certification cycle :\nDXCAPIN-cbl.json\nDXCBDSUP.md\n\nGroup 1: SSN last four
+    digits 0001–4999\nGroup 2: SSN last four digits 5000–9999\n\nThe system classifies
+    each year as either an \"Even Year\" or \"Odd Year\" based on a predefined perpetual
+    cycle table (not simply calendar even/odd). The group determines which biweekly
+    weeks a claimant is scheduled to certify :\nDXCBDSUP.md\n\nBiweekly Certification
+    Schedule By Year Type And SSN Group\n\nYear Type\n\n\t\n\nWeek 7 (DDD-1=7)\n\n\
+    \t\n\nWeek 14 (DDD-1=14)\n\n\t\n\n...\n\n\nEven Year\tGroup 1 scheduled\tGroup
+    2 scheduled\t...\nOdd Year\tGroup 2 scheduled\tGroup 1 scheduled\t...\nView more\n\
+    Weeks where DDD-1 is not a multiple of 7 → all claimants are always scheduled
+    regardless of group.\nDXCAPIN-cbl.json\nIf a claimant certifies in a week they
+    are not scheduled for, the system sets SUPP-CWE2-FLAG = 'Y', suppressing the second
+    week's payment.\nDXCC060S-cbl.json\nIn batch, DXCBDSUP also validates this schedule
+    and will zero out CWE-DATE4 to reset claimants who are off their schedule.\nDXCBDSUP.md\n\
+    \nThis logic appears in multiple programs: DXCAPIN.cbl, DXCC060S.cbl, LOAK025S.cbl
+    (CICS space), DXCBDSUP.cbl (Daily CA-7 space), and LO99SBLD.cbl (CICS space).\n\
+    LO99SBLD-cbl.json\nDXCAPIN-cbl.json\nDXCBDSUP.md\nDXCC060S-cbl.json\nLOAK025S-cbl.json\n\
+    \nSummary\n\nThis answer is synthesized from multiple programs across both CICS
+    and batch spaces. In short:\n\nSSN last digit (odd/even) → determines the certification
+    day (Tue/Wed) and the mail date offset on checks\nSSN last four digits (< 5000
+    vs ≥ 5000) → determines the biweekly group for the perpetual certification schedule
+    cycle\nCertifying on the wrong day or in the wrong biweekly week suppresses the
+    second week's payment eligibility\nWould you like to explore any of these areas
+    further?\n\nEven/Odd Year cycle table details\n\nBatch suppression logic in DXCBDSUP\n\
+    \nBC-9 form date calculation differences"
+- id: v2-Q3
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is a deeply
+    documented topic across multiple CICS and batch programs. The TRANS-UI-PAY1 field
+    encodes both the benefit program and the payment situation in a single numeric
+    code. Here is a synthesized summary from the knowledge base.\n\nEncoding Structure\n\
+    \nThe code follows a hundreds-digit = program convention, with the ones/tens digits
+    indicating the payment position and earnings status within that program :\nWWCP028S-cbl.json\n\
+    DXCP028S-cbl.html\nDXCP028S-cbl.json\n\nTable\n\nHundreds Digit\n\n\t\n\nProgram\n\
+    \n\n0xx\tRegular UI\n1xx\tExtended Benefits (EB)\n2xx\tFederal Supplemental Compensation
+    (FSC/EC)\n3xx\tTrade Unemployment Compensation Extension X (TUCX)\n4xx\tEmergency
+    Unemployment Benefits (EUB)\n5xx\tWorkforce Development (WFD)\n6xx\tTrade Unemployment
+    Compensation Y (TUCY)\n7xx\tTrade Unemployment Compensation Z (TUCZ)\nView more\n\
+    Regular UI Base Codes (0xx)\n\nThese are assigned in CICS programs WWCP028S, DXCP028S,
+    DXCP031S, and DXCD072S :\nWWCP028S-cbl.json\nDXCP028S-cbl.json\nWWCP028S-cbl.html\n\
+    DXCP031S-cbl.json\n\nRegular UI Transaction Codes (TRANS-UI-PAY1 < 100)\n\nCode\n\
+    \n\t\n\nWeek Type\n\n\t\n\nEarnings Condition\n\n\t\n\n...\n\n\n001\tWaiting Week
+    Credit\tN/A\t...\n002\tWaiting Week Credit\tN/A\t...\n005\tPended Waiting Week\t
+    No earnings\t...\n006\tPended Waiting Week\tEarnings < PWBR\t...\n007\tFirst Compensable
+    Week\tNo earnings\t...\n008\tFirst Compensable Week\tEarnings > 0\t...\n009\t\
+    Continuation\tBenefit amount > 0\t...\n011\tFirst Week (Pend)\tNo earnings\t...\n\
+    012\tFirst Week (Pend)\t0 < Earnings < PWBR\t...\n013\tLast Payment\tNo earnings\t\
+    ...\nView more\n\n*Sources: WWCP028S.cbl\nWWCP028S-cbl.json\nWWCP028S-cbl.html\n\
+    \ , DXCP028S.cbl\nDXCP028S-cbl.json\n , DXCP031S.cbl\nDXCP031S-cbl.json\n , DXCD072S.cbl\n\
+    DXCD072S-cbl.json\n *\n\nExtension Program Codes\n\nAfter the base Regular UI
+    code is determined, benefit extension checks may override the code. The pattern
+    is consistent: base + suffix, where the suffix mirrors the UI meaning :\nWWCP028S-cbl.json\n\
+    DXCP028S-cbl.html\nDXCP028S-cbl.json\nWWCP028S-cbl.html\nLOAK025S-cbl.json\n\n\
+    Extension Program Transaction Code Pattern\n\nSuffix\n\n\t\n\nMeaning\n\n\t\n\n\
+    EB (1xx)\n\n\t\n\n...\n\n\n+07\tFirst payment, no earnings\t107\t...\n+08\tFirst
+    payment, with earnings\t108\t...\n+09\tFirst payment, no earnings (alt)\t109\t\
+    ...\n+10\tFirst payment, with earnings (alt)\t110\t...\n+11\tFirst week (pend),
+    no earnings\t111\t...\n+12\tFirst week (pend), partial earnings\t112\t...\n+13\t
+    Last payment, no earnings\t113\t...\n+14\tLast payment, with earnings\t114\t...\n\
+    +15\tMiddle payment, no earnings\t115\t...\n+16\tMiddle payment, with earnings\t\
+    116\t...\nView more\n\n*Cells marked \"—\" mean the specific code was not retrieved
+    from the knowledge base; it does not necessarily mean it doesn't exist. Sources:
+    WWCP028S.cbl\nWWCP028S-cbl.json\nWWCP028S-cbl.html\n , DXCP028S.cbl\nDXCP028S-cbl.json\n\
+    \ , DXCD072S.cbl\nDXCD072S-cbl.json\nWWCD072S-cbl.json\n , LOAK025S.cbl\nLOAK025S-cbl.json\n\
+    \ *\n\nHow Transaction Codes Are Assigned\n\nThe assignment logic differs by processing
+    context:\n\n1. Pended Payment Processing (DXCP028S, WWCP028S) — The system classifies
+    the week into three types based on the claimant's basic benefit record, then applies
+    earnings against the PWBR threshold (WBR + 20% of WBR) :\nWWCP028S-cbl.json\n\
+    DXCP028S-cbl.json\n\nWaiting Week (indicator = 1 in DXCP028S): codes 005/006/019\n\
+    First Compensable Week (indicator = 1 in WWCP028S, 2 in DXCP028S): codes 011/012/019\n\
+    Continued Week (indicator = 3): codes 017/018/019\nAfter the base code is set,
+    extension checks evaluate EB → EUB → FSC → TUCX → TUCY → TUCZ → WFD → EB(2009+)
+    and may override with the program-specific code\n\n2. Online Payment Processing
+    (DXCP031S, DXCD072S) — Uses codes 007/008/009/013/014/015/016/019/021, with the
+    additional first/middle/last payment distinction based on remaining balance and
+    benefit year end checks\n\n3. Payment Trigger / Extension Auto-Filing (LOAL026S)
+    — After writing the LOOPPAY record, if TRANS-UI-PAY1 = 13, 14, 213, or 214, the
+    system triggers TUC or TUCX extension auto-filing by evaluating CWE+1 against
+    the entitlement period tables (Table 157 for TUC, Table 257 for TUCX)\n\nDownstream
+    Handling\n\nNo-Pay Notice Output (UIMI0442) — The TRANS-UI-PAY1 range determines
+    the program type printed on BC-9 no-pay notices :\nUIMI0442.md\n\nUIMI0442 No-Pay
+    Program Type By TRANS-UI-PAY1 Range\n\nTRANS-UI-PAY1 Range\n\n\t\n\nProgram Type
+    (F37)\n\n\n< 100 (or unmatched)\tNot set (regular UI)\n100–199\tEB\n200–299\t\
+    EC\n300–399\tTX\n400–499\tEU\n500–599\tWF\n600–699\tTY\n700–799\tTZ\nView more\n\
+    \nWaiting Week Credit Override (UIMI0441) — If TRANS-UI-PAY1 = 1 or 2 and the
+    secondary pay code is zero, the record type is overridden to '6' (Waiting Week
+    Credit)\n\nBatch Check Classification (DXCBD50E, DXCBD40E) — For Series-7 batch
+    checks, a payment type value derived from TRANS-UI-PAY maps to batch transaction
+    codes :\nDXCBD50E.md\nDXCBD40E.md\n\n0 → BP88 (Regular UI)\n1 → EB88\n2/3/6/7
+    → FS88 (FSC)\n4 → EU88 (EUB)\n5 → WF88 (WFD)\n\nVoid/Redeposit Processing (WWCP040S)
+    — The code is classified into program buckets: UI (< 100), EB (100–199), FSC (200–299),
+    TCX (300–399), EUB (400–499), WFD (500–599). Unrecognized codes produce error
+    685.\nWWCP040S-cbl.json\n\nKey Decision: Code 019\n\nCode 019 is universal — it
+    appears across all week types and all program contexts. It always means earnings
+    ≥ PWBR and no benefit is payable for that week. The PWBR threshold is WBR + 20%
+    of WBR.\nWWCP028S-cbl.json\nDXCP031S-cbl.json\n\nThis summary is synthesized from
+    multiple programs across both CICS and Daily CA-7 batch spaces. The \"—\" entries
+    in the extension code table reflect codes not retrieved from the knowledge base;
+    an SME or direct source review should be consulted to confirm the complete set
+    for each program."
+- id: v2-Q4
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThis is an
+    important distinction in the LOOPS knowledge base. The layout of Table 109 is
+    documented, and the program code values referenced in source code can be identified,
+    but the actual descriptions (T109-PC-DESCRIPTION text) are not in the knowledge
+    base — they live in the CODELOOP VSAM dataset, which is operations-maintained.\n\
+    \nTable 109 Record Layout\n\nThe copybook T109TABL (from T109TABL.txt) defines
+    the structure :\nT109TABL.txt\n\ncobol\n\n01  T109-TABLE-PROGRAM-CODES.\n    02
+    T109-CATEGORY-NUMBER      PIC 999.\n    02 T109-PC-KEY.\n      04 T109-PROG-CODE\
+    \          PIC 99.\n      04 FILLER                  PIC X(10).\n    02 T109-PC-LEVEL\
+    \             PIC 9.\n    02 T109-EMPLOYER-TYPE        OCCURS 5 TIMES.\n     \
+    \ 04 T109-FILLER-T109A       OCCURS 1 TIMES PIC X.\n    02 T109-PC-DESCRIPTION\
+    \       PIC X(20).\n    02 T109-PRG-CODE-EB          PIC 99.\n    02 T109-LI-PROGCODE-EC\
+    \       PIC 99.\n\nEach record carries: a 2-digit program code, a 1-digit level,
+    5 employer-type bytes, a 20-character description, and cross-references to related
+    EB and FSC/EC program codes.\n\nProgram Codes Referenced in Source\n\nFrom 88-level
+    conditions and literal definitions across multiple programs, the following program
+    codes appear in source and can be grouped by their condition-name classifications
+    :\nDXCR227M.txt\nDXCR227E.txt\nDXCRD28R.txt\n\nTable 109 Program Codes Referenced
+    In Source\n\nCode\n\n\t\n\nSource Condition Name\n\n\t\n\nInferred Category\n\n\
+    \t\n\n...\n\n\n10\tUI-PROG-CODE\tUI (Regular Unemployment Insurance)\t...\n20\t
+    UCFE-UCX-PROG-CODE\tUCFE / UCX (Federal Employees / Ex-Servicemembers)\t...\n\
+    21\tCOMB-PROG-CODE\tCombined Wage Claim\t...\n22\tCOMB-PROG-CODE\tCombined Wage
+    Claim\t...\n23\tUCFE-UCX-PROG-CODE\tUCFE / UCX\t...\n30\tUCFE-UCX-PROG-CODE\t\
+    UCFE / UCX\t...\n31\tCOMB-PROG-CODE\tCombined Wage Claim\t...\n40\tUI-PROG-CODE\t
+    UI (Regular Unemployment Insurance)\t...\n41\tCOMB-PROG-CODE\tCombined Wage Claim\t\
+    ...\n42\tCOMB-PROG-CODE\tCombined Wage Claim\t...\nView more\nProgram Code Levels
+    (T109-PC-LEVEL)\n\nThe level value controls which CICS transactions accept a given
+    program code :\nDXCC010S-cbl.json\nLO9P128P-cbl.json\nLO9GC23P-cbl.json\n\nLevel
+    1 — Valid for Claim Entry and EB processing (also extracts the related FSC program
+    code from T109-LI-PROGCODE-EC)\nLevel 2 — Valid for Claim Entry and TUCX extension
+    processing\nLevel 3 — Valid for TUCX extension and carries EUB filing restrictions\n\
+    Level 4 — Valid for Claim Entry\nWhat Is Not in the Knowledge Base\n\nThe actual
+    T109-PC-DESCRIPTION text values (the 20-character descriptions like \"NJ UNEMP
+    INSURANCE\" or similar) are populated at runtime from the CODELOOP VSAM dataset.
+    The copybook T109TABL defines only the record layout — the values are operations-maintained,
+    just as with other CODELOOP tables (e.g., Table 120). The knowledge base does
+    not contain a dump or listing of CODELOOP contents.\nT109TABL.txt\n\nSimilarly,
+    the cross-reference fields T109-PRG-CODE-EB and T109-LI-PROGCODE-EC (which map
+    each base program code to its corresponding EB and FSC program codes) are populated
+    from CODELOOP, not hard-coded in the copybook.\n\nTo get the complete list of
+    codes with their exact descriptions, you would need to consult the CODELOOP VSAM
+    dataset directly or request an operations extract of Table 109 (category 109).\n\
+    \nWould you like to explore further?\n\nHow specific program codes like 21, 22,
+    23 are validated\n\nTable 109 usage in claim entry or EB/EUB processing\n\nOther
+    CODELOOP reference tables"
+- id: v2-Q5
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThe knowledge
+    base does not contain a formal code table listing all valid SG11 nonmonetary issue
+    code values with their official descriptions. The issue code field (DB11-NON-ISS-CD
+    / SEG11-ISS-CD) is a 2-digit numeric value, and each nonmonetary segment (Segment
+    11) can hold up to 5 issue code entries.\nDXCD061S-cbl.json\n\nHowever, I can
+    synthesize the issue codes that are explicitly referenced by name and function
+    in the documented programs. This is a synthesized compilation — not a single authoritative
+    source.\n\nIssue Codes Referenced in Source Code\nSG11 Nonmonetary Issue Codes
+    Referenced In Source\n\nCode\n\n\t\n\nDescription (from source)\n\n\t\n\nProcessing
+    Category\n\n\t\n\n...\n\n\n0\tStop/empty — no issue code present; also treated
+    as exempt\tStop condition / Exempt\t...\n3\tWFD qualifying issue\tGeneral disqualification\t\
+    ...\n13\tCertified Time (see conflict note below)\tCertified time — bypasses disqualification
+    conflict check\t...\n15\tPension\tPension offset — bypasses disqualification conflict
+    check\t...\n17\tLabor Dispute / Wages in lieu of notice\tExcluded from nonmonetary
+    table in CMIB processing; bypasses conflict check\t...\n18\tIdentity theft / reversal\t
+    Special processing — identity reversal\t...\n19\tFraud overpayment / Fraud disqualification\t
+    Fraud — adds 119 days to nonmon date for end date; always added to table regardless
+    of date overlap\t...\n20\tFraud penalty / Fraud disqualification alternate\tFraud
+    — same handling as 19\t...\n23\tCertified Time alternate\tCertified time — same
+    handling as 13\t...\n24\tWFD qualifying issue\tGeneral disqualification\t...\n\
+    View more\nDocumented Conflict: Issue Code 13 Description\n\nThere is a conflict
+    across sources for issue code 13 :\nDXCP020S-cbl.json\nWWCD072S-cbl.json\n\nDXCP020S
+    describes it as \"Monetary Redetermination\"\nDXCD072S and WWCD072S describe it
+    as \"Certified Time\"\nDXCP331S groups it with 15, 17, and 48 as \"pension-related
+    codes\" (which appears to be a broader processing-category label rather than an
+    individual description)\n\nThis should be flagged for SME review to confirm the
+    authoritative description.\n\nProcessing Groups (from CMIB payment processing)\n\
+    \nThe nonmonetary table construction logic in DXCD072S and WWCD072S classifies
+    issue codes into these processing groups :\nWWCD072S-cbl.json\n\nCertified time
+    (codes 13, 23, 48) — always added to the table; cert-time flag = 0\nPension (code
+    15) — added with pension dollar amount\nFraud (codes 19, 20) — always added regardless
+    of date overlap; includes reduction amount\nLabor dispute (code 17) — explicitly
+    excluded from the nonmonetary table\nExempt from disqualification conflict check
+    (codes 0, 13, 15, 17, 48) — DXCP151S skips these during disqualification table
+    building\nGeneral disqualification (all other codes) — added only if their date
+    range overlaps the CMIB processing period\nWhat Is Not in the Knowledge Base\n\
+    \nThe complete enumerated list of all valid nonmonetary issue codes is not documented
+    in the held code. The issue code is a 2-digit numeric field, and values beyond
+    those listed above may exist in production. The full code table with official
+    descriptions would be maintained as operations/reference data — likely in a CODELOOP
+    VSAM table or an external reference document outside the knowledge base. An SME
+    or operations staff member would need to be consulted for the authoritative complete
+    list.\n\nWould you like to explore a specific issue code further?\n\nFraud issue
+    codes (19, 20)\n\nCertified time processing\n\nExempt code handling in weekly
+    certification"
+- id: v2-Q6
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nGreat question.
+    The source code is quite clear on this — let me synthesize what the documented
+    programs say.\n\nShort Answer: Yes, in the documented programs — but with important
+    nuances\n\nIn every program in the knowledge base that validates or computes a
+    CWE date, Saturday is the required day of the week. However, not all program codes
+    receive a CWE date at all, and one program code has a special calculation path.
+    Here's the full picture:\n\nCWE Must Be Saturday — Enforced by Multiple Programs\n\
+    \nMultiple programs independently enforce (validate at runtime) and derive (compute
+    by construction) the Saturday requirement:\n\nDXCA360C (Screen A252 — basic claim
+    data entry): Validates the CWE date field; if the day of week ≠ Saturday (day-of-week
+    = 7), error code 9 is raised.\nDXCA360C-cbl.json\nDXCA016S (claim transfer screen):
+    States explicitly: \"A fundamental business rule for Unemployment Insurance requires
+    that the Current Week Ending (CWE) date must always fall on a Saturday.\" Any
+    non-Saturday CWE is rejected.\nDXCA016S-cbl.json\nDXCP020S (payment screen): Validates
+    both CWE1 and CWE2 fall on the correct day (DOWSUB = 7); error 128 is raised if
+    not.\nDXCP020S-cbl.json\nDXCBD23U (batch disqualification processing): Derives
+    the disqualification end date by computing the Saturday of the calendar week containing
+    the CWE.\nDXCBD23U.md\nCWE Calculation at Claim Creation: Program Code Matters\n\
+    \nThe claim creation program MACROLST reveals two paths :\nMACROLST-cbl.json\n\
+    \nStandard program codes — CWE is calculated as Date of Claim + 6 days. Since
+    NJ UI claims begin on a Sunday (the DOC is a Sunday), adding 6 produces a Saturday.
+    This is derivation by construction, not a runtime check on the day of week.\n\n\
+    Skeleton/special program codes — the CWE calculation is skipped entirely and no
+    CWE date is stored. These program codes are:\n\n11 (EB), 12 (EB Reopen), 45 (Interstate
+    Agent), 50 (Garnishment/UCX), 70 (UCX Military), 71 (UCX Reopen), 72 (UCX Extended),
+    75 (UCFE Federal), 76 (UCFE Special), 77 (UCFE Reopen), 78 (UCFE Extended), 79
+    (Special Federal), 80–84 (TRA variants), 88 (DUA)\n\nThese claims do not operate
+    on the standard weekly certification schedule, so the question of \"Saturday or
+    not\" doesn't apply — they have no CWE.\n\nSpecial Case: UCX Program Code 30\n\
+    \nFor Program Code 30 (UCX — Military), the CWE is calculated differently depending
+    on the claim date :\nDXCD022S-cbl.json\nDXCD112S-cbl.json\n\nClaim date on or
+    after 03/04/1990: CWE = Claim Date + 6 days (same as standard)\nClaim date before
+    03/04/1990: CWE = the later of (Claim Date + 6 days) or (Separation Date + 35
+    days, adjusted forward to the next Saturday)\n\nIn both branches the resulting
+    date is still a Saturday — the pre-1990 path explicitly rounds to the next Saturday.\n\
+    \nCombined Program Codes (22, 23, 31, 42, 43) with UCX Wages\n\nFor these combined
+    codes with Federal Set Rate = 'Y', DXCD051S validates that the CWE has reached
+    the UCX separation boundary (separation date + 28 days, adjusted to the nearest
+    Saturday).\nDXCD051S-cbl.json\n Again, the boundary itself is Saturday-aligned.\n\
+    \nA Documented Conflict in DXCP020S Mermaid Labels\n\nThere is a labeling inconsistency
+    in DXCP020S: the Mermaid diagram labels for the CWE2 day-of-week check say \"\
+    Does CWE2 fall on a Sunday?\" while the rule descriptions and acceptance criteria
+    consistently say the validation checks for DOWSUB = 7 meaning Saturday.\nDXCP020S-cbl.json\n\
+    \ The rule description text is authoritative (\"All compensable week ending dates
+    must fall on a Saturday\"), and the diagram label appears to be a documentation
+    error. This should be flagged for SME review.\n\nSummary\nCWE Saturday Requirement
+    By Program Code Category\n\nProgram Code Category\n\n\t\n\nCWE Assigned?\n\n\t\
+    \n\nAlways Saturday?\n\n\t\n\n...\n\n\nStandard UI (e.g., 01, 02, 20, 21, etc.)\t\
+    Yes\tYes\t...\nUCX PC 30 (post 03/04/1990)\tYes\tYes\t...\nUCX PC 30 (pre 03/04/1990)\t\
+    Yes\tYes\t...\nCombined UCX (22, 23, 31, 42, 43)\tYes\tYes\t...\nSkeleton/special
+    (11, 12, 45, 50, 70–79, 80–84, 88)\tNo\tN/A — no CWE set\t...\nCWE validated on
+    screens / payment\t—\tSaturday enforced\t...\nView more\n\nBottom line, in the
+    documented programs: For every program code that receives a CWE date, that date
+    is always Saturday — both by derivation (the arithmetic produces Saturday) and
+    by enforcement (runtime validation rejects non-Saturdays). Program codes that
+    are skeleton or special claims never get a CWE date at all.\n\nCoverage caveat:
+    This conclusion is bounded by the held code. Programs, jobs, or streams outside
+    the knowledge base may handle CWE dates differently — a universal claim cannot
+    be confirmed from the knowledge base alone."
+- id: v2-Q7
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThe knowledge
+    base does not contain a program named UIMB0447. No source code, business rules
+    document, or JCL reference for that program ID was found in any of the connected
+    spaces (Weekly Certification, Daily CA-7, CICS, or CA-7 All).\n\nPossible Typo?\n\
+    \nBased on LOOPS naming conventions (UIMB* = batch main programs, UIMI* = batch
+    subprograms), here are the closest documented programs that might be what you're
+    looking for:\n\nUIMB0047 / UIMI0047 — A daily batch program that synchronizes
+    a Labor input file against DB2 Table 14 (UIMV_EMPL_ACC_CNTL) to add, reactivate,
+    or inactivate employee access control records\nUIMB0147 / UIMI0147 — A batch New
+    Hire crossmatch program that processes crossmatch records against UI benefit claims
+    and generates letters and reports\nUIMB0004 — A batch monetary determination program
+    that calculates WBR, MBA, and employer charges and generates output forms (BC2,
+    BC3, IB4, etc.)\n\nCould you double-check the program name? If you meant one of
+    the programs above, I can provide a detailed breakdown of its purpose and file
+    I/O.\n\nDid you mean one of these programs?\n\nUIMB0047 / UIMI0047\n\nUIMB0147
+    / UIMI0147\n\nUIMB0004"
+- id: v2-Q8
+  answer: "ENGINEERING ONBOARDING SPECIALIST (V2)\nCompleted 1 step\n\nThe knowledge
+    base does not document the mainframe logon procedure — that falls under operations/infrastructure
+    documentation, which is outside the scope of the held LOOPS source code and analysis
+    documents. However, the source code does reveal the production CICS region identifiers
+    and related environment details.\n\nWhat the Knowledge Base Documents: Production
+    Region Identifiers\n\nFrom the CICS programs that perform environment identification,
+    the following CICS Application IDs (APPLIDs) are documented:\n\nLOOPS CICS Region
+    Identifiers From Source Code\n\nAPPLID\n\n\t\n\nEnvironment\n\n\t\n\nNotes\n\n\
+    \t\n\n...\n\n\nCI04JPAF\tProduction (Primary)\tUsed as the definitive production
+    check across all programs\t...\nCI04JPAD\tProduction (Secondary)\tTreated as production
+    for restart user ID selection\t...\nCI02JTAC\tTest (Region AC)\tDedicated test
+    environment with its own MQ queues\t...\nCI02JTSF\tTest (Region SF)\tDedicated
+    test environment with its own MQ queues\t...\nView more\nProduction Service User
+    IDs (from Source)\n\nThe programs hard-code environment-specific service user
+    IDs for automated CICS transactions:\n\nProduction: LAKLDXP (used by LO8RCPLT
+    to start transaction LO93) and LAKLDYP (used by LOD1GETQ for LOD1 restart)\nTest/Non-Production:
+    LAKLDXT (used by both programs in non-production regions)\nProduction MQ Queues
+    (from Source)\n\nThe production CICS region CI04JPAF uses a dedicated MQ request
+    queue: LAK2LDXP.LOOPS.REQUEST.CICJPAF\n\nSecurity: ACF2 Authorization\n\nThe source
+    code confirms that LOOPS uses ACF2 for mainframe security. Every CICS transaction
+    checks authorization by calling program ACF2INT2 with a 300-byte communication
+    area containing the resource name (e.g., LAALOOPSLO8J). A return value of 'D'
+    in field WS-DENY-ALLOW means access denied.\nLO8RCPLT-cbl.json\n\nWhat Is NOT
+    in the Knowledge Base\n\nThe following are not documented in the held code and
+    would need to be obtained from your operations or infrastructure team:\n\nTSO/ISPF
+    logon procedures (hostnames, IP addresses, VTAM terminal definitions)\nACF2 user
+    provisioning (how to request or activate a mainframe logon ID)\nCICS region connection
+    details (how to connect a 3270 terminal or emulator to CI04JPAF)\nVPN or network
+    access requirements for reaching the mainframe\nCode promotion / deployment /
+    change-management process\n\nFor the actual logon procedure, I'd recommend reaching
+    out to your mainframe operations or infrastructure team, or checking for an onboarding/access-request
+    document that would typically be maintained outside of the application source
+    code."

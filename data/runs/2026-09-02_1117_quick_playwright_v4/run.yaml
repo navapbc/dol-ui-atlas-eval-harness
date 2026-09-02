@@ -1,0 +1,13 @@
+run_id: 2026-09-02_1117_quick_playwright_v4
+backend: quick
+transport: playwright
+bank_version: v4
+question_sha256: 
+  5da69eeb3130fb8ab9be81f4fba495e8fdd9438066f8f37f4329d3130da5b204
+agent: engineering_onboarding_specialist
+agent_id: 30b0228b-b58a-43ad-818b-2f262f11108f
+conversation_id: cb197047-bed1-4e80-8e5c-3cb16b7caa77
+started_at: '2026-09-02T11:04:55.155874'
+finished_at: '2026-09-02T11:17:03.989774'
+harness_git_sha: c3cc093a560379bef5c8e4cc2ff70ebc1419b255-dirty
+status: complete
