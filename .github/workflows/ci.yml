@@ -18,6 +18,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
+      # tests/test_quick_dom.py launches headless Chromium; the pip package ships no browser.
+      - run: python -m playwright install --with-deps chromium
       # No AWS credentials are configured, by design: everything here is offline.
       - run: python -m atlas_eval.cli validate --banks data/banks
       - run: python -m atlas_eval.cli rollup --check
