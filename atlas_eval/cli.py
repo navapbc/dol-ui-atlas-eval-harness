@@ -380,6 +380,48 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(render_prompt_sheet(resolve_run_order(load_bank(bank_path))))
         return 0
 
+    if args.transport == "loops-kb":
+        # Handled entirely here and returned, rather than threaded through the
+        # paste/playwright flag checks and the Quick control-plane snapshot
+        # below. None of that applies: there is no transcript, no browser
+        # profile, no URL, and no Amazon Q agent to describe. The backend's own
+        # snapshot() records the corpus digest, both model ids and every fusion
+        # knob, which is the equivalent evidence for this transport.
+        from atlas_eval.adapters.base import TransportError
+        from atlas_eval.adapters.loops_kb import DEFAULT_REPO, LoopsKbBackend
+
+        repo = Path(args.kb_repo).expanduser() if args.kb_repo else DEFAULT_REPO
+        if not (repo / "tools" / "loops_kb_mcp.py").is_file():
+            print(f"error: no served module at {repo}/tools/loops_kb_mcp.py. "
+                  f"Pass --kb-repo pointing at a loops-knowledge-base checkout.")
+            return 2
+
+        eval_db = Path(args.eval_db).expanduser()
+        if eval_db.exists() and eval_db.is_dir():
+            print(f"error: --eval-db must be a file path, not a directory: {eval_db}")
+            return 2
+
+        backend = LoopsKbBackend(eval_db=eval_db, repo=repo,
+                                 num_results=args.num_results)
+        try:
+            run_dir = run_bank(bank_path, backend, Path(args.runs))
+        except TransportError as err:
+            if err.code == "AUTH_REQUIRED":
+                # Name the fix. This transport reads a Bedrock knowledge base
+                # and an S3 corpus in one specific account, and the useful
+                # profile is not the one AWS_PROFILE usually points at.
+                print(f"error: {err}\n"
+                      f"       this transport needs credentials for the account "
+                      f"hosting the knowledge base.\n"
+                      f"       try: AWS_PROFILE=billy-cobol atlas-eval run ...")
+            else:
+                print(f"error: {err}")
+            return 2
+        except OrchestrationError as err:
+            print(f"error: {err}")
+            return 2
+        return _report_run(run_dir)
+
     transcript_path: Path | None = None
     profile: Path | None = None
     if args.transport == "paste":
@@ -610,9 +652,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p_run = sub.add_parser("run", help="execute a bank against a backend")
     p_run.add_argument("--bank", required=True)
-    p_run.add_argument("--transport", choices=("paste", "playwright"), default="paste",
+    p_run.add_argument("--transport", choices=("paste", "playwright", "loops-kb"),
+                       default="paste",
                        help="paste: you drive Quick and paste the transcript. "
-                            "playwright: drive the UI (needs a signed-in profile).")
+                            "playwright: drive the UI (needs a signed-in profile). "
+                            "loops-kb: ask the LOOPS knowledge base directly.")
     p_run.add_argument("--runs", default="data/runs")
     p_run.add_argument("--transcript", help="pasted transcript (paste transport)")
     p_run.add_argument("--print-sheet", action="store_true",
@@ -622,6 +666,15 @@ def main(argv: list[str] | None = None) -> int:
                        help="selector tab the agent is pinned to (playwright "
                             "transport); default Favorites")
     p_run.add_argument("--profile-dir", default=".auth/quick-profile")
+    p_run.add_argument("--eval-db", default=".local/eval-runs/atlas-eval.sqlite3",
+                       help="loops-kb transport: SQLite path for this sweep's "
+                            "traces. Kept out of the served module's runtime "
+                            "history so benchmark rows never mix with real usage.")
+    p_run.add_argument("--kb-repo",
+                       help="loops-kb transport: loops-knowledge-base checkout "
+                            "(default ~/dev/loops-knowledge-base)")
+    p_run.add_argument("--num-results", type=int, default=10,
+                       help="loops-kb transport: chunks in the synthesis window")
     p_run.add_argument("--account-id", help="AWS account id, for the config snapshot")
     p_run.add_argument("--profile", help="named AWS CLI profile for the config snapshot")
     p_run.add_argument("--agent-id")

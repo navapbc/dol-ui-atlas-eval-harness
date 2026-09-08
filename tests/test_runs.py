@@ -50,6 +50,15 @@ def test_rollup_starts_with_the_exact_legacy_columns():
     assert len(ROLLUP_COLUMNS) > len(LEGACY), "new columns must append, not replace"
 
 
+def test_make_run_id_distinguishes_repeats_within_one_minute():
+    # The repetition protocol runs the same bank several times in a row and a
+    # small bank finishes in seconds, so minute granularity collided and
+    # write_run aborted the second repeat.
+    first = make_run_id(datetime(2026, 9, 8, 14, 30, 1), "loops-kb", "bedrock-kb", "v7")
+    second = make_run_id(datetime(2026, 9, 8, 14, 30, 39), "loops-kb", "bedrock-kb", "v7")
+    assert first != second
+
+
 def test_make_run_id_includes_the_transport():
     # Both real transports report backend name "quick", so the id must carry
     # the transport too, or a paste run and a playwright run of the same bank
@@ -59,7 +68,7 @@ def test_make_run_id_includes_the_transport():
     assert paste_id != playwright_id
     assert "paste" in paste_id
     assert "playwright" in playwright_id
-    assert paste_id == "2026-08-12_1704_quick_paste_v5"
+    assert paste_id == "2026-08-12_170400_quick_paste_v5"
 
 
 def test_write_then_read_round_trips(tmp_path):
