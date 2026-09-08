@@ -89,7 +89,7 @@ empty when you have no such concern.
 Reply with one JSON object and nothing else:
 {"citations": 0-2, "correctness": 0-2, "gap_honesty": 0-2,
  "scope_discipline": 0-2, "clarity": 0-2,
- "notes": "<two sentences maximum, naming the specific defect or strength>",
+ "notes": "<ONE sentence, 200 characters maximum, naming the specific defect>",
  "ground_truth_concern": "<empty string, or what looks wrong with the key>"}
 """
 
@@ -241,6 +241,12 @@ class BedrockJudge:
                 # retrying only spends calls. Raise it as-is; the CLI prints a
                 # message rather than a botocore traceback.
                 raise
+            if response.get("stopReason") == "max_tokens":
+                last = JudgeError(
+                    f"{question.id}: judge reply hit the token limit and was "
+                    f"truncated before the JSON closed"
+                )
+                continue
             try:
                 return parse_judgment(question.id, self._text(response), self.scored_by)
             except JudgeError as error:
@@ -260,7 +266,7 @@ class BedrockJudge:
         # Newer models reject it outright ("`temperature` is deprecated for
         # this model"), so fall back once to sending no temperature at all
         # rather than pinning this to whichever generation shipped last.
-        attempts = [{"maxTokens": 1024, "temperature": 0}, {"maxTokens": 1024}]
+        attempts = [{"maxTokens": 4096, "temperature": 0}, {"maxTokens": 4096}]
         try:
             for index, config in enumerate(attempts):
                 try:

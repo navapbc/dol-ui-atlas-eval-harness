@@ -319,3 +319,31 @@ class TestInferenceConfig:
         judge.judge_one(_question(), "answer")
         # One call only: no fallback needed when the first config is accepted.
         assert len(client.prompts) == 1
+
+
+class _TruncatingClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def converse(self, **kwargs):
+        self.calls += 1
+        return {
+            "stopReason": "max_tokens",
+            "output": {"message": {"content": [{"text": '{"citations": 1, "notes": "cut off'}]}},
+        }
+
+
+class TestTruncation:
+    def test_a_truncated_reply_says_so(self):
+        # "no JSON object" sent me looking for a refusal when the model had
+        # simply run out of room mid-notes.
+        judge = BedrockJudge("m", client=_TruncatingClient(), max_attempts=1)
+        with pytest.raises(JudgeError, match="hit the token limit"):
+            judge.judge_one(_question(), "answer")
+
+    def test_truncation_is_retried_because_it_is_not_deterministic(self):
+        client = _TruncatingClient()
+        judge = BedrockJudge("m", client=client, max_attempts=3)
+        with pytest.raises(JudgeError):
+            judge.judge_one(_question(), "answer")
+        assert client.calls == 3
