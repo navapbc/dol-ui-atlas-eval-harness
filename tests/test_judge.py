@@ -8,6 +8,7 @@ import pytest
 
 from atlas_eval.judge import (
     DIMENSIONS,
+    JudgeApiError,
     PROMPT_VERSION,
     RUBRIC_ENTRY_COLUMNS,
     BedrockJudge,
@@ -238,3 +239,83 @@ class TestFillingTheExport:
         fill_export_csv(draft, out, self._report(ids=("q1",)))
         with out.open(encoding="utf-8", newline="") as fh:
             assert next(csv.DictReader(fh))["verification_status"] == "unverified"
+
+
+class _RejectingClient:
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.calls = 0
+
+    def converse(self, **kwargs):
+        self.calls += 1
+        raise RuntimeError(self.message)
+
+
+class TestApiErrors:
+    def test_an_api_rejection_is_a_judge_error_not_a_traceback(self):
+        client = _RejectingClient("ValidationException: something is wrong")
+        judge = BedrockJudge("m", client=client, max_attempts=2)
+        with pytest.raises(JudgeError, match="rejected the request"):
+            judge.judge_one(_question(), "answer")
+
+    def test_an_api_rejection_is_not_retried(self):
+        # A bad model id or missing permission fails identically every time;
+        # retrying only spends calls.
+        client = _RejectingClient("AccessDeniedException")
+        judge = BedrockJudge("m", client=client, max_attempts=3)
+        with pytest.raises(JudgeError):
+            judge.judge_one(_question(), "answer")
+        assert client.calls == 1
+
+    def test_the_on_demand_error_names_the_inference_profile_form(self):
+        # list-foundation-models returns anthropic.claude-opus-5, which is not
+        # invocable on-demand. The error should say what to use instead.
+        client = _RejectingClient(
+            "Invocation of model ID anthropic.claude-opus-5 with on-demand "
+            "throughput isn't supported."
+        )
+        judge = BedrockJudge("anthropic.claude-opus-5", client=client)
+        with pytest.raises(JudgeError, match="us.anthropic.claude-opus-5"):
+            judge.judge_one(_question(), "answer")
+
+    def test_an_api_rejection_aborts_the_batch_even_when_not_strict(self):
+        # Non-strict tolerates an unparseable reply, not a broken judge: every
+        # remaining question would fail the same way.
+        client = _RejectingClient("ValidationException")
+        judge = BedrockJudge("m", client=client)
+        with pytest.raises(JudgeApiError):
+            judge_run(judge, [_question("q1"), _question("q2")], {"q1": "a", "q2": "b"})
+
+
+class _TemperaturePickyClient:
+    """Rejects temperature the way newer models do, then succeeds without it."""
+
+    def __init__(self) -> None:
+        self.configs: list[dict] = []
+
+    def converse(self, **kwargs):
+        config = kwargs["inferenceConfig"]
+        self.configs.append(dict(config))
+        if "temperature" in config:
+            raise RuntimeError(
+                "ValidationException: The model returned the following errors: "
+                "`temperature` is deprecated for this model."
+            )
+        return {"output": {"message": {"content": [{"text": GOOD}]}}}
+
+
+class TestInferenceConfig:
+    def test_falls_back_to_no_temperature_when_the_model_rejects_it(self):
+        client = _TemperaturePickyClient()
+        judge = BedrockJudge("us.anthropic.claude-opus-5", client=client)
+        assert judge.judge_one(_question(), "answer").total == 8
+        assert "temperature" in client.configs[0]
+        assert "temperature" not in client.configs[1]
+        assert len(client.configs) == 2
+
+    def test_prefers_temperature_zero_when_accepted(self):
+        client = _StubClient([GOOD])
+        judge = BedrockJudge("us.anthropic.claude-fable-5", client=client)
+        judge.judge_one(_question(), "answer")
+        # One call only: no fallback needed when the first config is accepted.
+        assert len(client.prompts) == 1

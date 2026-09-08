@@ -591,9 +591,10 @@ def main(argv: list[str] | None = None) -> int:
     p_rubric_judge.add_argument("file", help="CSV from `rubric export`")
     p_rubric_judge.add_argument("--run", required=True, help="a run directory")
     p_rubric_judge.add_argument("--banks", default=str(DEFAULT_BANKS))
-    p_rubric_judge.add_argument("--model", default="anthropic.claude-opus-5",
-                                help="Bedrock model id for the judge; default "
-                                     "anthropic.claude-opus-5")
+    p_rubric_judge.add_argument("--model", default="us.anthropic.claude-opus-5",
+                                help="Bedrock inference profile id for the judge; "
+                                     "default us.anthropic.claude-opus-5. The bare "
+                                     "anthropic.* form is not invocable on-demand.")
     p_rubric_judge.add_argument("--region", default="us-east-1")
     p_rubric_judge.add_argument("--profile", help="named AWS CLI profile")
     p_rubric_judge.add_argument("-o", "--out",

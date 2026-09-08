@@ -98,6 +98,18 @@ class JudgeError(Exception):
     """A judgment could not be obtained or could not be trusted."""
 
 
+class JudgeApiError(JudgeError):
+    """The model endpoint rejected the request.
+
+    Separate from an unparseable reply because the two want opposite handling.
+    A malformed object is worth retrying and worth tolerating -- one bad reply
+    in fifty should not discard the batch. An API rejection is a bad model id,
+    a missing permission or a throttle: every remaining question fails
+    identically, so continuing produces fifty skipped rows and a report that
+    looks like a result.
+    """
+
+
 @dataclass
 class Judgment:
     question_id: str
@@ -221,23 +233,62 @@ class BedrockJudge:
         prompt = build_prompt(question, answer)
         last: JudgeError | None = None
         for _ in range(self.max_attempts):
-            response = self._runtime().converse(
-                modelId=self.model_id,
-                system=[{"text": SYSTEM_PROMPT}],
-                messages=[{"role": "user", "content": [{"text": prompt}]}],
-                # Deterministic as the API allows. Not a guarantee of identical
-                # output across calls, which is why the protocol repeats runs.
-                inferenceConfig={"maxTokens": 1024, "temperature": 0},
-            )
-            raw = "".join(
-                block.get("text", "")
-                for block in response["output"]["message"]["content"]
-            )
             try:
-                return parse_judgment(question.id, raw, self.scored_by)
+                response = self._converse(prompt)
+            except JudgeError:
+                # An API rejection is deterministic -- a bad model id or a
+                # missing permission fails identically on every retry, so
+                # retrying only spends calls. Raise it as-is; the CLI prints a
+                # message rather than a botocore traceback.
+                raise
+            try:
+                return parse_judgment(question.id, self._text(response), self.scored_by)
             except JudgeError as error:
                 last = error
         raise last or JudgeError(f"{question.id}: judge produced no usable reply")
+
+    @staticmethod
+    def _text(response: dict) -> str:
+        return "".join(
+            block.get("text", "") for block in response["output"]["message"]["content"]
+        )
+
+    def _converse(self, prompt: str) -> dict:
+        # temperature 0 where the model still accepts it: as deterministic as
+        # the API allows, though never a guarantee of identical output, which
+        # is why the protocol repeats runs rather than trusting the parameter.
+        # Newer models reject it outright ("`temperature` is deprecated for
+        # this model"), so fall back once to sending no temperature at all
+        # rather than pinning this to whichever generation shipped last.
+        attempts = [{"maxTokens": 1024, "temperature": 0}, {"maxTokens": 1024}]
+        try:
+            for index, config in enumerate(attempts):
+                try:
+                    return self._runtime().converse(
+                        modelId=self.model_id,
+                        system=[{"text": SYSTEM_PROMPT}],
+                        messages=[{"role": "user", "content": [{"text": prompt}]}],
+                        inferenceConfig=config,
+                    )
+                except Exception as error:  # noqa: BLE001 - inspected below
+                    deprecated = "temperature" in str(error) and "deprecat" in str(error)
+                    if deprecated and index + 1 < len(attempts):
+                        continue
+                    raise
+            raise JudgeApiError(f"judge model {self.model_id}: no usable inference config")
+        except Exception as error:  # noqa: BLE001 - surfaced as a JudgeError
+            hint = ""
+            if "on-demand throughput isn" in str(error):
+                # The bare model id from list-foundation-models is not
+                # invocable; on-demand needs the inference profile.
+                hint = (
+                    f" -- {self.model_id} needs an inference profile id; try "
+                    f"us.{self.model_id}"
+                )
+            raise JudgeApiError(
+                f"judge model {self.model_id} rejected the request: "
+                f"{type(error).__name__}: {error}{hint}"
+            ) from error
 
 
 def judge_run(
@@ -262,6 +313,9 @@ def judge_run(
             continue
         try:
             report.judgments.append(judge.judge_one(question, answer))
+        except JudgeApiError:
+            # Always fatal. See JudgeApiError.
+            raise
         except JudgeError as error:
             if strict:
                 raise
