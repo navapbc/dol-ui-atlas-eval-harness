@@ -11,6 +11,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "playwright>=1.44"]
+# Driving the LOOPS KB backend imports its served module, so these must be
+# the versions that module is pinned to in loops-knowledge-base
+# (tools/requirements-mcp.txt). Pinned there because MCP import paths and
+# AWS request behaviour are part of that tool's provenance; a version skew
+# here would mean the harness exercised a different pipeline than the one
+# actually served.
+loops = ["mcp==2.1.1", "boto3==1.43.81"]
 
 [project.scripts]
 atlas-eval = "atlas_eval.cli:main"
