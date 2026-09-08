@@ -41,6 +41,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -232,15 +233,23 @@ class BedrockJudge:
     def judge_one(self, question: Question, answer: str) -> Judgment:
         prompt = build_prompt(question, answer)
         last: JudgeError | None = None
-        for _ in range(self.max_attempts):
+        for attempt in range(self.max_attempts):
+            if attempt and last is not None and "throttling" in str(last):
+                # Back off before retrying a throttle; an instant retry just
+                # collects the same rejection.
+                time.sleep(min(2 ** attempt, 8))
             try:
                 response = self._converse(prompt)
-            except JudgeError:
-                # An API rejection is deterministic -- a bad model id or a
-                # missing permission fails identically on every retry, so
-                # retrying only spends calls. Raise it as-is; the CLI prints a
-                # message rather than a botocore traceback.
+            except JudgeApiError:
+                # Deterministic -- a bad model id or a missing permission
+                # fails identically on every retry, so retrying only spends
+                # calls. Raised as-is; the CLI prints a message rather than a
+                # botocore traceback.
                 raise
+            except JudgeError as error:
+                # Retryable API trouble, currently throttles and timeouts.
+                last = error
+                continue
             if response.get("stopReason") == "max_tokens":
                 last = JudgeError(
                     f"{question.id}: judge reply hit the token limit and was "
@@ -283,6 +292,16 @@ class BedrockJudge:
                     raise
             raise JudgeApiError(f"judge model {self.model_id}: no usable inference config")
         except Exception as error:  # noqa: BLE001 - surfaced as a JudgeError
+            text = f"{type(error).__name__}: {error}"
+            # Throttling and timeouts are the opposite of a bad model id: the
+            # same request succeeds moments later. Judging fifty questions in a
+            # row provokes them, and treating them as fatal killed three of
+            # seven banks mid-batch while the identical command worked on
+            # retry. Retryable, so a JudgeError rather than a JudgeApiError.
+            if any(marker in text.lower() for marker in
+                   ("throttl", "too many requests", "serviceunavailable",
+                    "timeout", "timed out", "503", "429")):
+                raise JudgeError(f"judge model {self.model_id} is throttling: {text}")
             hint = ""
             if "on-demand throughput isn" in str(error):
                 # The bare model id from list-foundation-models is not

@@ -347,3 +347,36 @@ class TestTruncation:
         with pytest.raises(JudgeError):
             judge.judge_one(_question(), "answer")
         assert client.calls == 3
+
+
+class _ThrottlingThenFineClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def converse(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("ThrottlingException: Too many requests")
+        return {"output": {"message": {"content": [{"text": GOOD}]}}}
+
+
+class TestThrottling:
+    def test_a_throttle_is_retried_not_fatal(self, monkeypatch):
+        # Treating throttles as fatal killed three of seven banks mid-batch
+        # while the identical command succeeded on retry.
+        import atlas_eval.judge as judge_mod
+
+        monkeypatch.setattr(judge_mod.time, "sleep", lambda _s: None)
+        client = _ThrottlingThenFineClient()
+        judge = BedrockJudge("m", client=client, max_attempts=3)
+        assert judge.judge_one(_question(), "answer").total == 8
+        assert client.calls == 2
+
+    def test_a_throttle_does_not_abort_the_batch(self, monkeypatch):
+        import atlas_eval.judge as judge_mod
+
+        monkeypatch.setattr(judge_mod.time, "sleep", lambda _s: None)
+        judge = BedrockJudge("m", client=_ThrottlingThenFineClient(), max_attempts=3)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"})
+        assert len(report.judgments) == 1
+        assert report.skipped == []
