@@ -222,6 +222,13 @@ class LoopsKbBackend:
             # conversational backend. See the module docstring.
             "conversation": "none: each question is an independent call",
             "trace": "full per-call trace in eval_store (queries, fused chunks, usage)",
+            # Read this before quoting a citation score for this transport.
+            "citation_basis": (
+                "answer text includes the served tool's Sources footer, which "
+                "lists every RETRIEVED chunk rather than every USED one, one "
+                "line per chunk. A citation score here measures retrieval, not "
+                "grounding, and repeats a document once per admitted chunk."
+            ),
         }
 
     def _git_head(self) -> str | None:
@@ -255,12 +262,25 @@ class LoopsKbBackend:
                 # system declining to answer.
                 raise TransportError(code, f"{question.id}: {detail}") from error
 
-            answer, citations = split_answer_and_citations(raw or "")
+            _body, citations = split_answer_and_citations(raw or "")
             responses.append(
                 Response(
+                    # The FULL reply, footer included. scoring.score_answer
+                    # computes citation recall by substring-matching
+                    # expect_citations against the answer text, not against
+                    # Response.citations, because Quick embeds its citations in
+                    # prose. Handing it the body alone scored this transport on
+                    # a different basis than every stored Quick run: eight of
+                    # fifty questions failed on citation recall alone with every
+                    # other check passing. Comparability wins; see `citations`
+                    # below and snapshot()["citation_basis"] for what the number
+                    # does and does not mean.
                     question_id=question.id,
-                    answer=answer,
+                    answer=raw or "",
                     asked_at=asked_at,
+                    # Still split out, because the structured list is the honest
+                    # one: it is what was retrieved, in rank order, with a
+                    # document repeated once per admitted chunk.
                     citations=citations,
                 )
             )

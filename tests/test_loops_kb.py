@@ -181,3 +181,25 @@ def test_response_timestamps_are_real_datetimes():
     result = _StubBackend().ask([_question("q1")])
     assert isinstance(result.responses[0].asked_at, datetime)
     assert isinstance(result, AskResult)
+
+
+class TestScoredTextIncludesTheFooter:
+    def test_the_answer_retains_the_sources_footer(self):
+        # scoring.score_answer substring-matches expect_citations against the
+        # answer text, not Response.citations. Stripping the footer scored this
+        # transport differently from every stored Quick run.
+        backend = _StubBackend(
+            answers={"q": "body text\n\nSources:\n[1] s3://b/p/DXCBD50A.md"}
+        )
+        result = backend.ask([_question("q1", "q")])
+        answer = result.responses[0].answer
+        assert "Sources:" in answer
+        assert "DXCBD50A.md" in answer
+
+    def test_citations_are_still_available_separately(self):
+        backend = _StubBackend(
+            answers={"q": "body\n\nSources:\n[1] s3://b/p/A.md\n[2] s3://b/p/A.md"}
+        )
+        result = backend.ask([_question("q1", "q")])
+        # A document repeats once per admitted chunk; that is the honest count.
+        assert result.responses[0].citations == ["A.md", "A.md"]
