@@ -148,6 +148,52 @@ def _cmd_rubric_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rubric_judge(args: argparse.Namespace) -> int:
+    from atlas_eval.dataset import load_bank, resolve_run_order
+    from atlas_eval.judge import (
+        BedrockJudge, JudgeError, fill_export_csv, format_report, judge_run,
+    )
+    from atlas_eval.runs import read_run
+
+    run_dir = Path(args.run)
+    if not run_dir.is_dir():
+        print(f"error: no such run directory: {run_dir}")
+        return 2
+    draft = Path(args.file)
+    if not draft.is_file():
+        print(f"error: no such rubric CSV: {draft}. Run "
+              f"`atlas-eval rubric export --run {run_dir}` first.")
+        return 2
+
+    meta, answers, _rows = read_run(run_dir)
+    bank_path = Path(args.banks) / f"{meta.bank_version}.yaml"
+    if not bank_path.is_file():
+        print(f"error: no bank {meta.bank_version} at {bank_path}")
+        return 2
+    questions = resolve_run_order(load_bank(bank_path))
+
+    judge = BedrockJudge(
+        model_id=args.model, region=args.region, profile=args.profile
+    )
+    out_path = Path(args.out) if args.out else draft.with_suffix(".judged.csv")
+    try:
+        report = judge_run(judge, questions, answers, strict=args.strict)
+        filled = fill_export_csv(draft, out_path, report)
+    except JudgeError as err:
+        print(f"error: {err}")
+        return 2
+
+    print(format_report(report, questions))
+    print(f"\nwrote {filled} scored row(s) to {out_path}")
+    print(
+        "review it, then import deliberately:\n"
+        f"  atlas-eval rubric import {out_path} --run {run_dir} "
+        f"--scored-by {judge.scored_by}\n"
+        "pass --confirmed-by only once a person has actually read the answers."
+    )
+    return 0
+
+
 def _cmd_rubric_import(args: argparse.Namespace) -> int:
     from atlas_eval.rubric_entry import import_rubric
 
@@ -497,6 +543,23 @@ def main(argv: list[str] | None = None) -> int:
     p_rubric_exp.add_argument("--banks", default=str(DEFAULT_BANKS))
     p_rubric_exp.add_argument("-o", "--out", default="rubric.csv")
     p_rubric_exp.set_defaults(func=_cmd_rubric_export)
+
+    p_rubric_judge = rubric_sub.add_parser(
+        "judge", help="fill an exported rubric CSV with LLM-as-judge scores")
+    p_rubric_judge.add_argument("file", help="CSV from `rubric export`")
+    p_rubric_judge.add_argument("--run", required=True, help="a run directory")
+    p_rubric_judge.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_rubric_judge.add_argument("--model", default="anthropic.claude-opus-5",
+                                help="Bedrock model id for the judge; default "
+                                     "anthropic.claude-opus-5")
+    p_rubric_judge.add_argument("--region", default="us-east-1")
+    p_rubric_judge.add_argument("--profile", help="named AWS CLI profile")
+    p_rubric_judge.add_argument("-o", "--out",
+                                help="output CSV; default <file>.judged.csv")
+    p_rubric_judge.add_argument("--strict", action="store_true",
+                                help="abort on the first unusable judge reply "
+                                     "instead of recording it as unscored")
+    p_rubric_judge.set_defaults(func=_cmd_rubric_judge)
 
     p_rubric_imp = rubric_sub.add_parser("import", help="write drafted rubric scores back")
     p_rubric_imp.add_argument("file")
