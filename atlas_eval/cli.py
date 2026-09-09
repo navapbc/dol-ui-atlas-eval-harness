@@ -129,6 +129,29 @@ def _cmd_review_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_explain(args: argparse.Namespace) -> int:
+    from atlas_eval.explain import build_views, format_views
+
+    run_dir = Path(args.run)
+    if not run_dir.is_dir():
+        print(f"error: no such run directory: {run_dir}")
+        return 2
+    judged = Path(args.judged) if args.judged else None
+    if judged and not judged.is_file():
+        print(f"error: no such judged CSV: {judged}. Run "
+              f"`atlas-eval rubric judge` first, or omit --judged.")
+        return 2
+
+    run_id, views = build_views(run_dir, Path(args.banks), judged)
+    text = format_views(run_id, views, only=args.only, excerpt=args.excerpt)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"wrote {args.out}")
+    else:
+        print(text)
+    return 0
+
+
 def _cmd_rubric_export(args: argparse.Namespace) -> int:
     from atlas_eval.rubric_entry import export_rubric
 
@@ -650,6 +673,21 @@ def main(argv: list[str] | None = None) -> int:
     p_rep.add_argument("--runs", default="data/runs")
     p_rep.add_argument("--banks", default=str(DEFAULT_BANKS))
     p_rep.set_defaults(func=_cmd_report)
+
+    p_explain = sub.add_parser(
+        "explain",
+        help="per-question view of one run: question, key, answer, scores")
+    p_explain.add_argument("--run", required=True, help="a run directory")
+    p_explain.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_explain.add_argument("--judged", help="a `rubric judge` CSV, to include judge scores")
+    p_explain.add_argument("--only", choices=("all", "failures", "disagreements"),
+                           default="all",
+                           help="disagreements: only questions where deterministic "
+                                "scoring and the judge conflict")
+    p_explain.add_argument("--excerpt", type=int, default=500,
+                           help="characters of the answer to show; default 500")
+    p_explain.add_argument("-o", "--out", help="write markdown here instead of stdout")
+    p_explain.set_defaults(func=_cmd_explain)
 
     p_run = sub.add_parser("run", help="execute a bank against a backend")
     p_run.add_argument("--bank", required=True)
