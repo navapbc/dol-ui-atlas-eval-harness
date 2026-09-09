@@ -380,3 +380,155 @@ class TestThrottling:
         report = judge_run(judge, [_question("q1")], {"q1": "a"})
         assert len(report.judgments) == 1
         assert report.skipped == []
+
+
+# --- grounded mode ------------------------------------------------------------
+
+from atlas_eval.judge import (  # noqa: E402
+    GROUNDED_VERSION,
+    build_grounded_prompt,
+    load_evidence_store,
+    load_reference_json,
+)
+
+GROUNDED_GOOD = (
+    '{"citations": 2, "correctness": 1, "gap_honesty": 2, "scope_discipline": 2, '
+    '"clarity": 2, "unsupported_claims": ["PAY2 is written by DXCBD06E"], '
+    '"reference_agreement": 1, "notes": "one claim outruns the excerpts", '
+    '"ground_truth_concern": ""}'
+)
+
+EVIDENCE = [
+    {"uri": "s3://b/p/DXCBD50A.md", "summary": "Profiling extract for PAY fields.",
+     "text": "IF PAY1 = 019 ... IF PAY2 = 007", "score": 0.9},
+    {"uri": "s3://b/p/DXNHCM04.md", "summary": "", "text": "reads PAYVSAM", "score": 0.5},
+]
+
+
+class TestGroundedPrompt:
+    def test_carries_the_evidence_with_document_identity(self):
+        prompt = build_grounded_prompt(_question(), "an answer", EVIDENCE)
+        assert "[1] DXCBD50A.md" in prompt
+        assert "Document summary: Profiling extract" in prompt
+        assert "IF PAY1 = 019" in prompt
+        assert "[2] DXNHCM04.md" in prompt
+
+    def test_still_names_no_system(self):
+        prompt = build_grounded_prompt(_question(), "an answer", EVIDENCE,
+                                       {"reference_answer": "ref", "evidence_status": "Supported"})
+        lowered = prompt.lower()
+        for leak in ("loops", "quick", "bedrock", "transport", "backend", "run_id"):
+            assert leak not in lowered, leak
+
+    def test_labels_the_reference_as_reported_not_scored(self):
+        prompt = build_grounded_prompt(_question(), "a", EVIDENCE,
+                                       {"reference_answer": "the ref", "evidence_status": "Partial"})
+        assert "report agreement, do not score against it" in prompt
+        assert "evidence status: Partial" in prompt
+        assert "the ref" in prompt
+
+    def test_omits_the_reference_block_when_there_is_none(self):
+        assert "REFERENCE ANSWER" not in build_grounded_prompt(_question(), "a", EVIDENCE)
+
+    def test_does_not_include_the_bank_key(self):
+        # The whole point: the key was the weakest link.
+        prompt = build_grounded_prompt(_question(), "a", EVIDENCE)
+        assert "DXCBD50A checks 019 then 007." not in prompt
+
+
+class TestGroundedParsing:
+    def test_reads_the_two_extras(self):
+        j = parse_judgment("q1", GROUNDED_GOOD, "m@v2")
+        assert j.reference_agreement == 1
+        assert j.unsupported_claims == ["PAY2 is written by DXCBD06E"]
+        assert j.total == 9
+
+    def test_extras_are_optional_under_the_key_based_prompt(self):
+        j = parse_judgment("q1", GOOD, "m@v1")
+        assert j.reference_agreement is None
+        assert j.unsupported_claims == []
+
+    def test_out_of_range_agreement_is_an_error(self):
+        raw = GROUNDED_GOOD.replace('"reference_agreement": 1', '"reference_agreement": 3')
+        with pytest.raises(JudgeError, match="reference_agreement"):
+            parse_judgment("q1", raw, "m@v2")
+
+    def test_unsupported_claims_must_be_a_list(self):
+        raw = GROUNDED_GOOD.replace('["PAY2 is written by DXCBD06E"]', '"just a string"')
+        with pytest.raises(JudgeError, match="must be a list"):
+            parse_judgment("q1", raw, "m@v2")
+
+
+class TestGroundedJudge:
+    def test_scored_by_names_the_grounded_prompt_version(self):
+        judge = BedrockJudge("m", client=_StubClient([]), grounded=True)
+        assert judge.scored_by == f"m@{GROUNDED_VERSION}"
+        assert GROUNDED_VERSION != PROMPT_VERSION
+
+    def test_grounded_mode_refuses_to_run_without_evidence(self):
+        judge = BedrockJudge("m", client=_StubClient([]), grounded=True)
+        with pytest.raises(JudgeError, match="needs retrieved evidence"):
+            judge.judge_one(_question(), "answer")
+
+    def test_grounded_mode_uses_the_grounded_system_prompt(self):
+        client = _StubClient([GROUNDED_GOOD])
+        judge = BedrockJudge("m", client=client, grounded=True)
+        judge.judge_one(_question(), "answer", evidence=EVIDENCE)
+        assert "EVIDENCE the system retrieved" in client.systems[0]
+        assert "unsupported_claims" in client.systems[0]
+
+    def test_judge_run_threads_evidence_and_reference_by_id(self):
+        client = _StubClient([GROUNDED_GOOD])
+        judge = BedrockJudge("m", client=client, grounded=True)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"},
+                           evidence={"q1": EVIDENCE},
+                           references={"q1": {"reference_answer": "ref"}})
+        assert len(report.judgments) == 1
+        assert "ref" in client.prompts[0]
+
+    def test_a_question_without_evidence_is_skipped_not_fatal(self):
+        judge = BedrockJudge("m", client=_StubClient([]), grounded=True)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"}, evidence={})
+        assert report.judgments == []
+        assert "needs retrieved evidence" in report.skipped[0]
+
+
+class TestGroundedLoaders:
+    def test_evidence_store_joins_on_exact_question_text(self, tmp_path):
+        import sqlite3, json as _json
+        db = tmp_path / "eval.sqlite3"
+        c = sqlite3.connect(db)
+        c.execute("create table exchanges (id integer primary key, kind text, question text, results_json text)")
+        c.execute("insert into exchanges (kind, question, results_json) values (?,?,?)",
+                  ("ask", "how does the certification gate work?", _json.dumps(EVIDENCE)))
+        c.execute("insert into exchanges (kind, question, results_json) values (?,?,?)",
+                  ("search", "how does the certification gate work?", _json.dumps([])))
+        c.commit(); c.close()
+        got = load_evidence_store(db, [_question("q1"), _question("q2", text="something else")])
+        assert list(got) == ["q1"]
+        assert got["q1"][0]["uri"].endswith("DXCBD50A.md")
+
+    def test_reference_json_round_trips(self, tmp_path):
+        import json as _json
+        path = tmp_path / "ref.json"
+        path.write_text(_json.dumps({"q1": {"reference_answer": "x", "human_rating": 4}}))
+        assert load_reference_json(path)["q1"]["human_rating"] == 4
+
+
+class TestGroundedCsv:
+    def test_extras_are_folded_into_notes_with_findable_prefixes(self, tmp_path):
+        draft = tmp_path / "rubric.csv"
+        with draft.open("w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(RUBRIC_ENTRY_COLUMNS), lineterminator="\n")
+            w.writeheader()
+            row = dict.fromkeys(RUBRIC_ENTRY_COLUMNS, ""); row["question_id"] = "q1"
+            w.writerow(row)
+        client = _StubClient([GROUNDED_GOOD])
+        judge = BedrockJudge("m", client=client, grounded=True)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"}, evidence={"q1": EVIDENCE})
+        out = tmp_path / "judged.csv"
+        fill_export_csv(draft, out, report)
+        with out.open(encoding="utf-8", newline="") as fh:
+            note = next(csv.DictReader(fh))["notes"]
+        assert note.startswith("REF-AGREE:1 | UNSUPPORTED[1]: PAY2 is written by DXCBD06E")
+        assert note.endswith("one claim outruns the excerpts")

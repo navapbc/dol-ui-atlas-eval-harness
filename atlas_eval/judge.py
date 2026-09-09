@@ -53,6 +53,7 @@ from atlas_eval.scoring import RUBRIC_DIMENSIONS, Rubric
 # scored_by, so a score can always be traced to the exact instructions that
 # produced it: "anthropic.claude-opus-5@judge-v1".
 PROMPT_VERSION = "judge-v1"
+GROUNDED_VERSION = "judge-v2-grounded"
 
 # Sourced from scoring.py rather than restated: a dimension added there
 # must not silently go unjudged here.
@@ -95,6 +96,57 @@ Reply with one JSON object and nothing else:
 """
 
 
+GROUNDED_SYSTEM_PROMPT = """\
+You are grading one answer produced by a retrieval system over a corpus of
+COBOL/mainframe analysis documents for a state unemployment insurance system.
+
+You are given the EVIDENCE the system retrieved -- the actual document
+excerpts it had in front of it when it wrote the answer. Grade the answer
+against that evidence. Do not grade it against your own knowledge of COBOL or
+against the reference answer, which was itself produced by a model and is
+supplied only so you can report agreement with it separately.
+
+Score five dimensions, each 0, 1 or 2:
+
+- citations: do the documents the answer cites actually contain what it
+  attributes to them, per the evidence? 2 = yes, specifically. 1 = partly, or
+  padded with documents that appear in the evidence but do not support the
+  claims made. 0 = a cited document does not say what the answer says it does.
+- correctness: are the substantive claims supported by the evidence? 2 = every
+  material claim traces to an excerpt. 1 = mostly supported with a material
+  claim the evidence does not establish. 0 = a material claim contradicts the
+  evidence.
+- gap_honesty: where the evidence does not cover something, does the answer
+  say so rather than fill it? 2 = states the boundary and stops. 1 = hedges
+  vaguely. 0 = presents unsupported content as fact. If the evidence does not
+  cover the question at all and the answer says so plainly, that is 2 here.
+- scope_discipline: does it answer what was asked? 2 = on target. 0 = drifts.
+- clarity: could an engineer act on it? Confident prose around an unsupported
+  claim is not clarity.
+
+Then, separately:
+
+- unsupported_claims: list each material claim in the answer that the evidence
+  does not establish. Quote or closely paraphrase the claim. Empty list if none.
+- reference_agreement: 2 if the answer is consistent with the reference answer
+  on every point both address, 1 if partly, 0 if they contradict. This is
+  reported, not scored: the reference may be wrong.
+- ground_truth_concern: if the reference answer itself appears unsupported by
+  the evidence or internally inconsistent, say what. Empty string otherwise.
+
+Judge only what the answer says against the evidence given. Do not reward
+length, formatting or confidence.
+
+Reply with one JSON object and nothing else:
+{"citations": 0-2, "correctness": 0-2, "gap_honesty": 0-2,
+ "scope_discipline": 0-2, "clarity": 0-2,
+ "unsupported_claims": ["..."],
+ "reference_agreement": 0-2,
+ "notes": "<ONE sentence, 200 characters maximum, naming the specific defect>",
+ "ground_truth_concern": "<empty string, or what looks wrong with the reference>"}
+"""
+
+
 class JudgeError(Exception):
     """A judgment could not be obtained or could not be trusted."""
 
@@ -117,6 +169,9 @@ class Judgment:
     rubric: Rubric
     ground_truth_concern: str = ""
     raw: str = ""
+    # Grounded mode only. None / empty under the key-based prompt.
+    reference_agreement: int | None = None
+    unsupported_claims: list[str] = field(default_factory=list)
 
     @property
     def total(self) -> int:
@@ -162,6 +217,46 @@ def build_prompt(question: Question, answer: str) -> str:
     return "\n\n".join(parts)
 
 
+def _excerpt_block(index: int, item: dict, limit: int) -> str:
+    name = str(item.get("uri", "?")).rsplit("/", 1)[-1]
+    header = f"[{index}] {name}"
+    summary = (item.get("summary") or "").strip()
+    if summary:
+        header += f"\nDocument summary: {summary}"
+    text = (item.get("text") or "")[:limit]
+    return f"{header}\n{text}"
+
+
+def build_grounded_prompt(
+    question: Question,
+    answer: str,
+    evidence: list[dict],
+    reference: dict | None = None,
+    excerpt_chars: int = 2500,
+) -> str:
+    """Assemble the grounded user turn: question, evidence, reference, answer.
+
+    The evidence is what the system actually retrieved, in rank order, with the
+    same document summary header the system saw. Still carries no backend, run
+    or transport identity -- the excerpts are corpus text, not system metadata.
+    """
+    parts = [
+        f"QUESTION\n{question.text}",
+        f"EXPECTED STANCE\n{question.expected_stance.value}",
+        "EVIDENCE THE SYSTEM RETRIEVED (rank order; this is what it saw)\n\n"
+        + "\n\n".join(_excerpt_block(i, e, excerpt_chars) for i, e in enumerate(evidence, 1)),
+    ]
+    if reference and reference.get("reference_answer"):
+        status = reference.get("evidence_status") or ""
+        note = f" (its own evidence status: {status})" if status else ""
+        parts.append(
+            "REFERENCE ANSWER (model-generated; report agreement, do not score against it)"
+            f"{note}\n{reference['reference_answer']}"
+        )
+    parts.append(f"ANSWER UNDER REVIEW\n{answer}")
+    return "\n\n".join(parts)
+
+
 _JSON_BLOCK = re.compile(r"\{.*\}", re.S)
 
 
@@ -197,11 +292,23 @@ def parse_judgment(question_id: str, raw: str, scored_by: str) -> Judgment:
 
     notes = payload.get("notes") or ""
     concern = payload.get("ground_truth_concern") or ""
+
+    agreement = payload.get("reference_agreement")
+    if agreement is not None:
+        if isinstance(agreement, bool) or not isinstance(agreement, int) or not 0 <= agreement <= 2:
+            raise JudgeError(f"{question_id}: reference_agreement must be 0-2, got {agreement!r}")
+    claims = payload.get("unsupported_claims") or []
+    if not isinstance(claims, list):
+        raise JudgeError(f"{question_id}: unsupported_claims must be a list")
+    claims = [str(c).strip() for c in claims if str(c).strip()]
+
     return Judgment(
         question_id=question_id,
         rubric=Rubric(**values, notes=str(notes).strip() or None, scored_by=scored_by),
         ground_truth_concern=str(concern).strip(),
         raw=raw,
+        reference_agreement=agreement,
+        unsupported_claims=claims,
     )
 
 
@@ -209,8 +316,10 @@ class BedrockJudge:
     """A judge backed by one Bedrock model. `client` is injectable for tests."""
 
     def __init__(self, model_id: str, client=None, region: str = "us-east-1",
-                 profile: str | None = None, max_attempts: int = 2) -> None:
+                 profile: str | None = None, max_attempts: int = 2,
+                 grounded: bool = False) -> None:
         self.model_id = model_id
+        self.grounded = grounded
         self.max_attempts = max(1, int(max_attempts))
         self._client = client
         self._region = region
@@ -218,7 +327,7 @@ class BedrockJudge:
 
     @property
     def scored_by(self) -> str:
-        return f"{self.model_id}@{PROMPT_VERSION}"
+        return f"{self.model_id}@{GROUNDED_VERSION if self.grounded else PROMPT_VERSION}"
 
     def _runtime(self):
         if self._client is None:
@@ -230,8 +339,21 @@ class BedrockJudge:
             self._client = session.client("bedrock-runtime", region_name=self._region)
         return self._client
 
-    def judge_one(self, question: Question, answer: str) -> Judgment:
-        prompt = build_prompt(question, answer)
+    def judge_one(
+        self,
+        question: Question,
+        answer: str,
+        evidence: list[dict] | None = None,
+        reference: dict | None = None,
+    ) -> Judgment:
+        if self.grounded:
+            if not evidence:
+                raise JudgeError(
+                    f"{question.id}: grounded judging needs retrieved evidence and none was supplied"
+                )
+            prompt = build_grounded_prompt(question, answer, evidence, reference)
+        else:
+            prompt = build_prompt(question, answer)
         last: JudgeError | None = None
         for attempt in range(self.max_attempts):
             if attempt and last is not None and "throttling" in str(last):
@@ -281,7 +403,7 @@ class BedrockJudge:
                 try:
                     return self._runtime().converse(
                         modelId=self.model_id,
-                        system=[{"text": SYSTEM_PROMPT}],
+                        system=[{"text": GROUNDED_SYSTEM_PROMPT if self.grounded else SYSTEM_PROMPT}],
                         messages=[{"role": "user", "content": [{"text": prompt}]}],
                         inferenceConfig=config,
                     )
@@ -321,6 +443,8 @@ def judge_run(
     questions: list[Question],
     answers: dict[str, str],
     *,
+    evidence: dict[str, list[dict]] | None = None,
+    references: dict[str, dict] | None = None,
     strict: bool = False,
 ) -> JudgeReport:
     """Judge every question that has an answer.
@@ -337,7 +461,11 @@ def judge_run(
             report.skipped.append(f"{question.id}: no answer in run")
             continue
         try:
-            report.judgments.append(judge.judge_one(question, answer))
+            report.judgments.append(judge.judge_one(
+                question, answer,
+                evidence=(evidence or {}).get(question.id),
+                reference=(references or {}).get(question.id),
+            ))
         except JudgeApiError:
             # Always fatal. See JudgeApiError.
             raise
@@ -346,6 +474,37 @@ def judge_run(
                 raise
             report.skipped.append(str(error))
     return report
+
+
+def load_evidence_store(db_path: Path, questions: list[Question]) -> dict[str, list[dict]]:
+    """Retrieved excerpts per question id, from the served module's eval store.
+
+    The store keys exchanges by question text, not id, so the join is on exact
+    text. Where a question was asked more than once the most recent exchange
+    wins, which is the one the scored run used.
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        rows = conn.execute(
+            "select question, results_json from exchanges "
+            "where kind='ask' and results_json is not null order by id"
+        ).fetchall()
+    finally:
+        conn.close()
+    by_text: dict[str, list[dict]] = {}
+    for text, results_json in rows:
+        try:
+            by_text[text.strip()] = json.loads(results_json)
+        except (TypeError, json.JSONDecodeError):
+            continue
+    return {q.id: by_text[q.text.strip()] for q in questions if q.text.strip() in by_text}
+
+
+def load_reference_json(path: Path) -> dict[str, dict]:
+    """Reference answers keyed by question id, as extracted from the workbook."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def fill_export_csv(in_path: Path, out_path: Path, report: JudgeReport) -> int:
@@ -386,10 +545,16 @@ def fill_export_csv(in_path: Path, out_path: Path, report: JudgeReport) -> int:
         for dimension in DIMENSIONS:
             row[dimension] = getattr(judgment.rubric, dimension)
         note = judgment.rubric.notes or ""
+        # Folded into notes rather than given their own columns, for the
+        # positional-read reason above. Each prefixed so it can be found.
+        if judgment.unsupported_claims:
+            note = f"UNSUPPORTED[{len(judgment.unsupported_claims)}]: " + \
+                   "; ".join(judgment.unsupported_claims) + f" | {note}"
+        if judgment.reference_agreement is not None:
+            note = f"REF-AGREE:{judgment.reference_agreement} | {note}"
         if judgment.ground_truth_concern:
-            # Folded into notes rather than given its own column, for the
-            # positional-read reason above. Prefixed so it can be found.
-            note = f"KEY-DISPUTE: {judgment.ground_truth_concern} | {note}".strip(" |")
+            note = f"KEY-DISPUTE: {judgment.ground_truth_concern} | {note}"
+        note = note.strip(" |")
         row["notes"] = note
         row["scored_by"] = judgment.rubric.scored_by or ""
         filled += 1
@@ -409,6 +574,17 @@ def format_report(report: JudgeReport, questions: list[Question]) -> str:
         f"scored: {len(report.judgments)} of {len(questions)} questions",
         f"rubric total: {report.total}/{report.available}",
     ]
+    grounded = [j for j in report.judgments if j.reference_agreement is not None]
+    if grounded:
+        unsupported = sum(len(j.unsupported_claims) for j in grounded)
+        with_any = sum(1 for j in grounded if j.unsupported_claims)
+        agree = sum(j.reference_agreement for j in grounded)
+        lines.append(
+            f"unsupported claims: {unsupported} across {with_any} of {len(grounded)} answers"
+        )
+        lines.append(
+            f"agreement with reference answers: {agree}/{2 * len(grounded)} (reported, not scored)"
+        )
     if report.concerns:
         lines.append("")
         lines.append("answer keys the judge disputes:")

@@ -195,12 +195,33 @@ def _cmd_rubric_judge(args: argparse.Namespace) -> int:
         return 2
     questions = resolve_run_order(load_bank(bank_path))
 
+    evidence = references = None
+    if args.evidence_db:
+        from atlas_eval.judge import load_evidence_store
+        db = Path(args.evidence_db)
+        if not db.is_file():
+            print(f"error: no such evidence store: {db}")
+            return 2
+        evidence = load_evidence_store(db, questions)
+        missing = [q.id for q in questions if q.id not in evidence]
+        if missing:
+            print(f"warning: no retrieved evidence in {db} for: {', '.join(missing)}")
+    if args.reference:
+        from atlas_eval.judge import load_reference_json
+        ref = Path(args.reference)
+        if not ref.is_file():
+            print(f"error: no such reference file: {ref}")
+            return 2
+        references = load_reference_json(ref)
+
     judge = BedrockJudge(
-        model_id=args.model, region=args.region, profile=args.profile
+        model_id=args.model, region=args.region, profile=args.profile,
+        grounded=evidence is not None,
     )
     out_path = Path(args.out) if args.out else draft.with_suffix(".judged.csv")
     try:
-        report = judge_run(judge, questions, answers, strict=args.strict)
+        report = judge_run(judge, questions, answers, evidence=evidence,
+                           references=references, strict=args.strict)
         filled = fill_export_csv(draft, out_path, report)
     except JudgeError as err:
         print(f"error: {err}")
@@ -622,6 +643,14 @@ def main(argv: list[str] | None = None) -> int:
     p_rubric_judge.add_argument("--profile", help="named AWS CLI profile")
     p_rubric_judge.add_argument("-o", "--out",
                                 help="output CSV; default <file>.judged.csv")
+    p_rubric_judge.add_argument("--evidence-db",
+                                help="the loops-kb eval store (LOOPS_KB_DB) for this run. "
+                                     "When given, the judge grades each answer against "
+                                     "the excerpts the system actually retrieved instead "
+                                     "of against the bank's answer key.")
+    p_rubric_judge.add_argument("--reference",
+                                help="JSON of reference answers keyed by question id; "
+                                     "agreement is reported alongside, never scored")
     p_rubric_judge.add_argument("--strict", action="store_true",
                                 help="abort on the first unusable judge reply "
                                      "instead of recording it as unscored")
