@@ -83,13 +83,20 @@ def make_run_id(finished: datetime, backend: str, transport: str, bank_version: 
     id, and `write_run` writing into that id would silently overwrite one
     run's files with the other's.
 
+    Seconds are included because the minute stamp was not actually unique
+    enough. The repetition protocol runs the same bank against the same
+    backend several times in a row, and a two-question bank finishes in well
+    under a minute: five repeats produced one id, and `write_run` correctly
+    refuses to write into a non-empty directory, so repeat two aborted the
+    sweep. That surfaced before any repeated run was attempted, not after.
+
     Migrated run directories under data/runs/ were written before this
     function grew the transport component and keep their old
     `<date>_<HHMM>_<backend>_<bank_version>` shape; read_run and
     regenerate_rollup read a run directory's contents directly and never
     parse the run_id string, so those old directories keep working unchanged.
     """
-    return f"{finished:%Y-%m-%d_%H%M}_{backend}_{transport}_{bank_version}"
+    return f"{finished:%Y-%m-%d_%H%M%S}_{backend}_{transport}_{bank_version}"
 
 
 def _plain(node):

@@ -129,6 +129,29 @@ def _cmd_review_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_explain(args: argparse.Namespace) -> int:
+    from atlas_eval.explain import build_views, format_views
+
+    run_dir = Path(args.run)
+    if not run_dir.is_dir():
+        print(f"error: no such run directory: {run_dir}")
+        return 2
+    judged = Path(args.judged) if args.judged else None
+    if judged and not judged.is_file():
+        print(f"error: no such judged CSV: {judged}. Run "
+              f"`atlas-eval rubric judge` first, or omit --judged.")
+        return 2
+
+    run_id, views = build_views(run_dir, Path(args.banks), judged)
+    text = format_views(run_id, views, only=args.only, excerpt=args.excerpt)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"wrote {args.out}")
+    else:
+        print(text)
+    return 0
+
+
 def _cmd_rubric_export(args: argparse.Namespace) -> int:
     from atlas_eval.rubric_entry import export_rubric
 
@@ -144,6 +167,73 @@ def _cmd_rubric_export(args: argparse.Namespace) -> int:
         "Read them here:\n"
         f"  transcript (question + answer + priming): {result.transcript_path}\n"
         f"  ground truth (bank):                       {result.bank_path}"
+    )
+    return 0
+
+
+def _cmd_rubric_judge(args: argparse.Namespace) -> int:
+    from atlas_eval.dataset import load_bank, resolve_run_order
+    from atlas_eval.judge import (
+        BedrockJudge, JudgeError, fill_export_csv, format_report, judge_run,
+    )
+    from atlas_eval.runs import read_run
+
+    run_dir = Path(args.run)
+    if not run_dir.is_dir():
+        print(f"error: no such run directory: {run_dir}")
+        return 2
+    draft = Path(args.file)
+    if not draft.is_file():
+        print(f"error: no such rubric CSV: {draft}. Run "
+              f"`atlas-eval rubric export --run {run_dir}` first.")
+        return 2
+
+    meta, answers, _rows = read_run(run_dir)
+    bank_path = Path(args.banks) / f"{meta.bank_version}.yaml"
+    if not bank_path.is_file():
+        print(f"error: no bank {meta.bank_version} at {bank_path}")
+        return 2
+    questions = resolve_run_order(load_bank(bank_path))
+
+    evidence = references = None
+    if args.evidence_db:
+        from atlas_eval.judge import load_evidence_store
+        db = Path(args.evidence_db)
+        if not db.is_file():
+            print(f"error: no such evidence store: {db}")
+            return 2
+        evidence = load_evidence_store(db, questions)
+        missing = [q.id for q in questions if q.id not in evidence]
+        if missing:
+            print(f"warning: no retrieved evidence in {db} for: {', '.join(missing)}")
+    if args.reference:
+        from atlas_eval.judge import load_reference_json
+        ref = Path(args.reference)
+        if not ref.is_file():
+            print(f"error: no such reference file: {ref}")
+            return 2
+        references = load_reference_json(ref)
+
+    judge = BedrockJudge(
+        model_id=args.model, region=args.region, profile=args.profile,
+        grounded=evidence is not None,
+    )
+    out_path = Path(args.out) if args.out else draft.with_suffix(".judged.csv")
+    try:
+        report = judge_run(judge, questions, answers, evidence=evidence,
+                           references=references, strict=args.strict)
+        filled = fill_export_csv(draft, out_path, report)
+    except JudgeError as err:
+        print(f"error: {err}")
+        return 2
+
+    print(format_report(report, questions))
+    print(f"\nwrote {filled} scored row(s) to {out_path}")
+    print(
+        "review it, then import deliberately:\n"
+        f"  atlas-eval rubric import {out_path} --run {run_dir} "
+        f"--scored-by {judge.scored_by}\n"
+        "pass --confirmed-by only once a person has actually read the answers."
     )
     return 0
 
@@ -334,6 +424,48 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(render_prompt_sheet(resolve_run_order(load_bank(bank_path))))
         return 0
 
+    if args.transport == "loops-kb":
+        # Handled entirely here and returned, rather than threaded through the
+        # paste/playwright flag checks and the Quick control-plane snapshot
+        # below. None of that applies: there is no transcript, no browser
+        # profile, no URL, and no Amazon Q agent to describe. The backend's own
+        # snapshot() records the corpus digest, both model ids and every fusion
+        # knob, which is the equivalent evidence for this transport.
+        from atlas_eval.adapters.base import TransportError
+        from atlas_eval.adapters.loops_kb import DEFAULT_REPO, LoopsKbBackend
+
+        repo = Path(args.kb_repo).expanduser() if args.kb_repo else DEFAULT_REPO
+        if not (repo / "tools" / "loops_kb_mcp.py").is_file():
+            print(f"error: no served module at {repo}/tools/loops_kb_mcp.py. "
+                  f"Pass --kb-repo pointing at a loops-knowledge-base checkout.")
+            return 2
+
+        eval_db = Path(args.eval_db).expanduser()
+        if eval_db.exists() and eval_db.is_dir():
+            print(f"error: --eval-db must be a file path, not a directory: {eval_db}")
+            return 2
+
+        backend = LoopsKbBackend(eval_db=eval_db, repo=repo,
+                                 num_results=args.num_results)
+        try:
+            run_dir = run_bank(bank_path, backend, Path(args.runs))
+        except TransportError as err:
+            if err.code == "AUTH_REQUIRED":
+                # Name the fix. This transport reads a Bedrock knowledge base
+                # and an S3 corpus in one specific account, and the useful
+                # profile is not the one AWS_PROFILE usually points at.
+                print(f"error: {err}\n"
+                      f"       this transport needs credentials for the account "
+                      f"hosting the knowledge base.\n"
+                      f"       try: AWS_PROFILE=billy-cobol atlas-eval run ...")
+            else:
+                print(f"error: {err}")
+            return 2
+        except OrchestrationError as err:
+            print(f"error: {err}")
+            return 2
+        return _report_run(run_dir)
+
     transcript_path: Path | None = None
     profile: Path | None = None
     if args.transport == "paste":
@@ -498,6 +630,32 @@ def main(argv: list[str] | None = None) -> int:
     p_rubric_exp.add_argument("-o", "--out", default="rubric.csv")
     p_rubric_exp.set_defaults(func=_cmd_rubric_export)
 
+    p_rubric_judge = rubric_sub.add_parser(
+        "judge", help="fill an exported rubric CSV with LLM-as-judge scores")
+    p_rubric_judge.add_argument("file", help="CSV from `rubric export`")
+    p_rubric_judge.add_argument("--run", required=True, help="a run directory")
+    p_rubric_judge.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_rubric_judge.add_argument("--model", default="us.anthropic.claude-opus-5",
+                                help="Bedrock inference profile id for the judge; "
+                                     "default us.anthropic.claude-opus-5. The bare "
+                                     "anthropic.* form is not invocable on-demand.")
+    p_rubric_judge.add_argument("--region", default="us-east-1")
+    p_rubric_judge.add_argument("--profile", help="named AWS CLI profile")
+    p_rubric_judge.add_argument("-o", "--out",
+                                help="output CSV; default <file>.judged.csv")
+    p_rubric_judge.add_argument("--evidence-db",
+                                help="the loops-kb eval store (LOOPS_KB_DB) for this run. "
+                                     "When given, the judge grades each answer against "
+                                     "the excerpts the system actually retrieved instead "
+                                     "of against the bank's answer key.")
+    p_rubric_judge.add_argument("--reference",
+                                help="JSON of reference answers keyed by question id; "
+                                     "agreement is reported alongside, never scored")
+    p_rubric_judge.add_argument("--strict", action="store_true",
+                                help="abort on the first unusable judge reply "
+                                     "instead of recording it as unscored")
+    p_rubric_judge.set_defaults(func=_cmd_rubric_judge)
+
     p_rubric_imp = rubric_sub.add_parser("import", help="write drafted rubric scores back")
     p_rubric_imp.add_argument("file")
     p_rubric_imp.add_argument("--run", required=True, help="a run directory")
@@ -545,11 +703,28 @@ def main(argv: list[str] | None = None) -> int:
     p_rep.add_argument("--banks", default=str(DEFAULT_BANKS))
     p_rep.set_defaults(func=_cmd_report)
 
+    p_explain = sub.add_parser(
+        "explain",
+        help="per-question view of one run: question, key, answer, scores")
+    p_explain.add_argument("--run", required=True, help="a run directory")
+    p_explain.add_argument("--banks", default=str(DEFAULT_BANKS))
+    p_explain.add_argument("--judged", help="a `rubric judge` CSV, to include judge scores")
+    p_explain.add_argument("--only", choices=("all", "failures", "disagreements"),
+                           default="all",
+                           help="disagreements: only questions where deterministic "
+                                "scoring and the judge conflict")
+    p_explain.add_argument("--excerpt", type=int, default=500,
+                           help="characters of the answer to show; default 500")
+    p_explain.add_argument("-o", "--out", help="write markdown here instead of stdout")
+    p_explain.set_defaults(func=_cmd_explain)
+
     p_run = sub.add_parser("run", help="execute a bank against a backend")
     p_run.add_argument("--bank", required=True)
-    p_run.add_argument("--transport", choices=("paste", "playwright"), default="paste",
+    p_run.add_argument("--transport", choices=("paste", "playwright", "loops-kb"),
+                       default="paste",
                        help="paste: you drive Quick and paste the transcript. "
-                            "playwright: drive the UI (needs a signed-in profile).")
+                            "playwright: drive the UI (needs a signed-in profile). "
+                            "loops-kb: ask the LOOPS knowledge base directly.")
     p_run.add_argument("--runs", default="data/runs")
     p_run.add_argument("--transcript", help="pasted transcript (paste transport)")
     p_run.add_argument("--print-sheet", action="store_true",
@@ -559,6 +734,15 @@ def main(argv: list[str] | None = None) -> int:
                        help="selector tab the agent is pinned to (playwright "
                             "transport); default Favorites")
     p_run.add_argument("--profile-dir", default=".auth/quick-profile")
+    p_run.add_argument("--eval-db", default=".local/eval-runs/atlas-eval.sqlite3",
+                       help="loops-kb transport: SQLite path for this sweep's "
+                            "traces. Kept out of the served module's runtime "
+                            "history so benchmark rows never mix with real usage.")
+    p_run.add_argument("--kb-repo",
+                       help="loops-kb transport: loops-knowledge-base checkout "
+                            "(default ~/dev/loops-knowledge-base)")
+    p_run.add_argument("--num-results", type=int, default=10,
+                       help="loops-kb transport: chunks in the synthesis window")
     p_run.add_argument("--account-id", help="AWS account id, for the config snapshot")
     p_run.add_argument("--profile", help="named AWS CLI profile for the config snapshot")
     p_run.add_argument("--agent-id")

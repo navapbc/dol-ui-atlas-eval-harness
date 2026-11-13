@@ -1,0 +1,534 @@
+"""Offline tests for LLM-as-judge scoring. No Bedrock call is made."""
+
+from __future__ import annotations
+
+import csv
+
+import pytest
+
+from atlas_eval.judge import (
+    DIMENSIONS,
+    JudgeApiError,
+    PROMPT_VERSION,
+    RUBRIC_ENTRY_COLUMNS,
+    BedrockJudge,
+    JudgeError,
+    build_prompt,
+    fill_export_csv,
+    format_report,
+    judge_run,
+    parse_judgment,
+)
+from atlas_eval.models import Question, Stance
+
+GOOD = ('{"citations": 2, "correctness": 1, "gap_honesty": 2, '
+        '"scope_discipline": 2, "clarity": 1, "notes": "missed the gate", '
+        '"ground_truth_concern": ""}')
+
+
+def _question(qid: str = "v7-Q1", **kw) -> Question:
+    data = dict(
+        id=qid,
+        text="how does the certification gate work?",
+        type="retrieval",
+        expected_stance=Stance.ANSWER,
+        ground_truth="DXCBD50A checks 019 then 007.",
+    )
+    data.update(kw)
+    return Question(**data)
+
+
+class _StubClient:
+    """Records prompts and replays canned replies."""
+
+    def __init__(self, replies: list[str]) -> None:
+        self.replies = list(replies)
+        self.prompts: list[str] = []
+        self.systems: list[str] = []
+
+    def converse(self, **kwargs):
+        self.prompts.append(kwargs["messages"][0]["content"][0]["text"])
+        self.systems.append(kwargs["system"][0]["text"])
+        reply = self.replies.pop(0) if self.replies else GOOD
+        return {"output": {"message": {"content": [{"text": reply}]}}}
+
+
+class TestBlinding:
+    def test_prompt_never_names_the_system_under_test(self):
+        prompt = build_prompt(_question(), "DXCBD50A applies 019 then 007.")
+        lowered = prompt.lower()
+        for leak in ("loops", "quick", "bedrock", "run_id", "transport", "backend"):
+            assert leak not in lowered, f"prompt leaked {leak!r}"
+
+    def test_prompt_carries_the_criteria_the_judge_needs(self):
+        question = _question(
+            partial_credit="credit naming the sequence",
+            checks={"required_all": ["DXCBD50A"], "forbidden": ["DXCD9999"]},
+        )
+        prompt = build_prompt(question, "an answer")
+        assert "how does the certification gate work?" in prompt
+        assert "DXCBD50A checks 019 then 007." in prompt
+        assert "credit naming the sequence" in prompt
+        assert "MUST BE PRESENT" in prompt
+        assert "MUST NOT BE PRESENT" in prompt
+        assert "an answer" in prompt
+
+    def test_the_key_is_labelled_as_possibly_wrong(self):
+        # v7-Q2's key is QUICK's own output and conflates two files. A judge
+        # told to trust it would mark a correct answer wrong.
+        assert "may itself be wrong" in build_prompt(_question(), "a")
+
+
+class TestParsing:
+    def test_parses_a_clean_object(self):
+        judgment = parse_judgment("q1", GOOD, "m@v1")
+        assert judgment.rubric.citations == 2
+        assert judgment.rubric.correctness == 1
+        assert judgment.total == 8
+        assert judgment.rubric.scored_by == "m@v1"
+
+    def test_parses_a_fenced_or_prose_wrapped_object(self):
+        wrapped = f"Here is my assessment:\n```json\n{GOOD}\n```\nHope that helps."
+        assert parse_judgment("q1", wrapped, "m@v1").rubric.citations == 2
+
+    def test_no_json_at_all_is_an_error(self):
+        with pytest.raises(JudgeError, match="no JSON object"):
+            parse_judgment("q1", "I would rather not score this.", "m@v1")
+
+    def test_a_missing_dimension_is_an_error(self):
+        partial = '{"citations": 2, "correctness": 1, "gap_honesty": 2, "clarity": 1}'
+        with pytest.raises(JudgeError, match="omitted scope_discipline"):
+            parse_judgment("q1", partial, "m@v1")
+
+    @pytest.mark.parametrize("bad", ["3", "-1"])
+    def test_out_of_range_is_an_error_not_a_clamp(self, bad):
+        # A clamped score is indistinguishable from a real one afterwards.
+        raw = GOOD.replace('"citations": 2', f'"citations": {bad}')
+        with pytest.raises(JudgeError, match="out of range"):
+            parse_judgment("q1", raw, "m@v1")
+
+    @pytest.mark.parametrize("bad", ['"2"', "1.5", "true", "null"])
+    def test_non_integer_scores_are_an_error(self, bad):
+        raw = GOOD.replace('"citations": 2', f'"citations": {bad}')
+        with pytest.raises(JudgeError, match="must be an integer|omitted"):
+            parse_judgment("q1", raw, "m@v1")
+
+    def test_a_key_dispute_is_captured_separately_from_notes(self):
+        raw = GOOD.replace('"ground_truth_concern": ""',
+                           '"ground_truth_concern": "key conflates PAYVSAM and PAYUPD4F"')
+        judgment = parse_judgment("q1", raw, "m@v1")
+        assert judgment.ground_truth_concern == "key conflates PAYVSAM and PAYUPD4F"
+        assert judgment.rubric.notes == "missed the gate"
+
+
+class TestJudging:
+    def test_scored_by_records_model_and_prompt_version(self):
+        judge = BedrockJudge("anthropic.claude-opus-5", client=_StubClient([]))
+        assert judge.scored_by == f"anthropic.claude-opus-5@{PROMPT_VERSION}"
+
+    def test_retries_a_malformed_reply_then_succeeds(self):
+        client = _StubClient(["not json", GOOD])
+        judge = BedrockJudge("m", client=client, max_attempts=2)
+        assert judge.judge_one(_question(), "answer").total == 8
+        assert len(client.prompts) == 2
+
+    def test_gives_up_after_max_attempts(self):
+        client = _StubClient(["nope", "still nope"])
+        judge = BedrockJudge("m", client=client, max_attempts=2)
+        with pytest.raises(JudgeError):
+            judge.judge_one(_question(), "answer")
+
+    def test_one_bad_reply_does_not_discard_the_batch(self):
+        # Judging fifty questions costs real money; losing all of it to one
+        # malformed object is worse than a report naming what is missing.
+        client = _StubClient(["bad", "bad", GOOD])
+        judge = BedrockJudge("m", client=client, max_attempts=2)
+        report = judge_run(judge, [_question("q1"), _question("q2")],
+                           {"q1": "a", "q2": "b"})
+        assert len(report.judgments) == 1
+        assert len(report.skipped) == 1
+
+    def test_strict_aborts_instead(self):
+        judge = BedrockJudge("m", client=_StubClient(["bad", "bad"]), max_attempts=2)
+        with pytest.raises(JudgeError):
+            judge_run(judge, [_question("q1")], {"q1": "a"}, strict=True)
+
+    def test_a_question_with_no_answer_is_skipped_not_scored(self):
+        judge = BedrockJudge("m", client=_StubClient([]))
+        report = judge_run(judge, [_question("q1")], {})
+        assert report.judgments == []
+        assert "no answer in run" in report.skipped[0]
+
+    def test_report_states_the_scores_are_machine_drafted(self):
+        judge = BedrockJudge("m", client=_StubClient([]))
+        report = judge_run(judge, [_question("q1")], {"q1": "a"})
+        text = format_report(report, [_question("q1")])
+        assert "machine-drafted" in text
+        assert "no question's verification status changed" in text
+
+
+class TestFillingTheExport:
+    def _draft(self, tmp_path, ids=("q1", "q2")):
+        path = tmp_path / "rubric.csv"
+        with path.open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(RUBRIC_ENTRY_COLUMNS),
+                                    lineterminator="\n")
+            writer.writeheader()
+            for qid in ids:
+                row = dict.fromkeys(RUBRIC_ENTRY_COLUMNS, "")
+                row["question_id"] = qid
+                row["type"] = "retrieval"
+                row["verification_status"] = "unverified"
+                row["deterministic_pass"] = "True"
+                writer.writerow(row)
+        return path
+
+    def _report(self, ids=("q1",), concern=""):
+        judge = BedrockJudge("m", client=_StubClient([]))
+        raw = GOOD
+        if concern:
+            raw = GOOD.replace('"ground_truth_concern": ""',
+                               f'"ground_truth_concern": "{concern}"')
+        client = _StubClient([raw] * len(ids))
+        judge = BedrockJudge("m", client=client)
+        return judge_run(judge, [_question(i) for i in ids],
+                         {i: "answer" for i in ids})
+
+    def test_preserves_column_order_exactly(self, tmp_path):
+        # rubric_entry.py warns the first fourteen columns are read
+        # positionally by an external chart.
+        draft = self._draft(tmp_path)
+        out = tmp_path / "judged.csv"
+        fill_export_csv(draft, out, self._report())
+        with out.open(encoding="utf-8", newline="") as fh:
+            assert tuple(csv.DictReader(fh).fieldnames) == RUBRIC_ENTRY_COLUMNS
+
+    def test_fills_scored_rows_and_leaves_others_visibly_empty(self, tmp_path):
+        draft = self._draft(tmp_path, ids=("q1", "q2"))
+        out = tmp_path / "judged.csv"
+        assert fill_export_csv(draft, out, self._report(ids=("q1",))) == 1
+        with out.open(encoding="utf-8", newline="") as fh:
+            rows = {r["question_id"]: r for r in csv.DictReader(fh)}
+        assert rows["q1"]["citations"] == "2"
+        assert rows["q1"]["scored_by"].endswith(PROMPT_VERSION)
+        assert all(rows["q2"][d] == "" for d in DIMENSIONS)
+        assert rows["q2"]["scored_by"] == ""
+
+    def test_a_disputed_key_is_findable_in_notes(self, tmp_path):
+        draft = self._draft(tmp_path, ids=("q1",))
+        out = tmp_path / "judged.csv"
+        fill_export_csv(draft, out, self._report(ids=("q1",), concern="conflates two files"))
+        with out.open(encoding="utf-8", newline="") as fh:
+            row = next(csv.DictReader(fh))
+        assert row["notes"].startswith("KEY-DISPUTE: conflates two files")
+
+    def test_never_writes_over_scores_csv(self, tmp_path):
+        draft = self._draft(tmp_path)
+        with pytest.raises(JudgeError, match="refusing to write judge output"):
+            fill_export_csv(draft, tmp_path / "scores.csv", self._report())
+
+    def test_rejects_a_csv_that_is_not_a_rubric_export(self, tmp_path):
+        wrong = tmp_path / "wrong.csv"
+        wrong.write_text("question_id,score\nq1,5\n", encoding="utf-8")
+        with pytest.raises(JudgeError, match="not a rubric export"):
+            fill_export_csv(wrong, tmp_path / "out.csv", self._report())
+
+    def test_a_judge_never_writes_a_verification_status(self, tmp_path):
+        draft = self._draft(tmp_path, ids=("q1",))
+        out = tmp_path / "judged.csv"
+        fill_export_csv(draft, out, self._report(ids=("q1",)))
+        with out.open(encoding="utf-8", newline="") as fh:
+            assert next(csv.DictReader(fh))["verification_status"] == "unverified"
+
+
+class _RejectingClient:
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.calls = 0
+
+    def converse(self, **kwargs):
+        self.calls += 1
+        raise RuntimeError(self.message)
+
+
+class TestApiErrors:
+    def test_an_api_rejection_is_a_judge_error_not_a_traceback(self):
+        client = _RejectingClient("ValidationException: something is wrong")
+        judge = BedrockJudge("m", client=client, max_attempts=2)
+        with pytest.raises(JudgeError, match="rejected the request"):
+            judge.judge_one(_question(), "answer")
+
+    def test_an_api_rejection_is_not_retried(self):
+        # A bad model id or missing permission fails identically every time;
+        # retrying only spends calls.
+        client = _RejectingClient("AccessDeniedException")
+        judge = BedrockJudge("m", client=client, max_attempts=3)
+        with pytest.raises(JudgeError):
+            judge.judge_one(_question(), "answer")
+        assert client.calls == 1
+
+    def test_the_on_demand_error_names_the_inference_profile_form(self):
+        # list-foundation-models returns anthropic.claude-opus-5, which is not
+        # invocable on-demand. The error should say what to use instead.
+        client = _RejectingClient(
+            "Invocation of model ID anthropic.claude-opus-5 with on-demand "
+            "throughput isn't supported."
+        )
+        judge = BedrockJudge("anthropic.claude-opus-5", client=client)
+        with pytest.raises(JudgeError, match="us.anthropic.claude-opus-5"):
+            judge.judge_one(_question(), "answer")
+
+    def test_an_api_rejection_aborts_the_batch_even_when_not_strict(self):
+        # Non-strict tolerates an unparseable reply, not a broken judge: every
+        # remaining question would fail the same way.
+        client = _RejectingClient("ValidationException")
+        judge = BedrockJudge("m", client=client)
+        with pytest.raises(JudgeApiError):
+            judge_run(judge, [_question("q1"), _question("q2")], {"q1": "a", "q2": "b"})
+
+
+class _TemperaturePickyClient:
+    """Rejects temperature the way newer models do, then succeeds without it."""
+
+    def __init__(self) -> None:
+        self.configs: list[dict] = []
+
+    def converse(self, **kwargs):
+        config = kwargs["inferenceConfig"]
+        self.configs.append(dict(config))
+        if "temperature" in config:
+            raise RuntimeError(
+                "ValidationException: The model returned the following errors: "
+                "`temperature` is deprecated for this model."
+            )
+        return {"output": {"message": {"content": [{"text": GOOD}]}}}
+
+
+class TestInferenceConfig:
+    def test_falls_back_to_no_temperature_when_the_model_rejects_it(self):
+        client = _TemperaturePickyClient()
+        judge = BedrockJudge("us.anthropic.claude-opus-5", client=client)
+        assert judge.judge_one(_question(), "answer").total == 8
+        assert "temperature" in client.configs[0]
+        assert "temperature" not in client.configs[1]
+        assert len(client.configs) == 2
+
+    def test_prefers_temperature_zero_when_accepted(self):
+        client = _StubClient([GOOD])
+        judge = BedrockJudge("us.anthropic.claude-fable-5", client=client)
+        judge.judge_one(_question(), "answer")
+        # One call only: no fallback needed when the first config is accepted.
+        assert len(client.prompts) == 1
+
+
+class _TruncatingClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def converse(self, **kwargs):
+        self.calls += 1
+        return {
+            "stopReason": "max_tokens",
+            "output": {"message": {"content": [{"text": '{"citations": 1, "notes": "cut off'}]}},
+        }
+
+
+class TestTruncation:
+    def test_a_truncated_reply_says_so(self):
+        # "no JSON object" sent me looking for a refusal when the model had
+        # simply run out of room mid-notes.
+        judge = BedrockJudge("m", client=_TruncatingClient(), max_attempts=1)
+        with pytest.raises(JudgeError, match="hit the token limit"):
+            judge.judge_one(_question(), "answer")
+
+    def test_truncation_is_retried_because_it_is_not_deterministic(self):
+        client = _TruncatingClient()
+        judge = BedrockJudge("m", client=client, max_attempts=3)
+        with pytest.raises(JudgeError):
+            judge.judge_one(_question(), "answer")
+        assert client.calls == 3
+
+
+class _ThrottlingThenFineClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def converse(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("ThrottlingException: Too many requests")
+        return {"output": {"message": {"content": [{"text": GOOD}]}}}
+
+
+class TestThrottling:
+    def test_a_throttle_is_retried_not_fatal(self, monkeypatch):
+        # Treating throttles as fatal killed three of seven banks mid-batch
+        # while the identical command succeeded on retry.
+        import atlas_eval.judge as judge_mod
+
+        monkeypatch.setattr(judge_mod.time, "sleep", lambda _s: None)
+        client = _ThrottlingThenFineClient()
+        judge = BedrockJudge("m", client=client, max_attempts=3)
+        assert judge.judge_one(_question(), "answer").total == 8
+        assert client.calls == 2
+
+    def test_a_throttle_does_not_abort_the_batch(self, monkeypatch):
+        import atlas_eval.judge as judge_mod
+
+        monkeypatch.setattr(judge_mod.time, "sleep", lambda _s: None)
+        judge = BedrockJudge("m", client=_ThrottlingThenFineClient(), max_attempts=3)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"})
+        assert len(report.judgments) == 1
+        assert report.skipped == []
+
+
+# --- grounded mode ------------------------------------------------------------
+
+from atlas_eval.judge import (  # noqa: E402
+    GROUNDED_VERSION,
+    build_grounded_prompt,
+    load_evidence_store,
+    load_reference_json,
+)
+
+GROUNDED_GOOD = (
+    '{"citations": 2, "correctness": 1, "gap_honesty": 2, "scope_discipline": 2, '
+    '"clarity": 2, "unsupported_claims": ["PAY2 is written by DXCBD06E"], '
+    '"reference_agreement": 1, "notes": "one claim outruns the excerpts", '
+    '"ground_truth_concern": ""}'
+)
+
+EVIDENCE = [
+    {"uri": "s3://b/p/DXCBD50A.md", "summary": "Profiling extract for PAY fields.",
+     "text": "IF PAY1 = 019 ... IF PAY2 = 007", "score": 0.9},
+    {"uri": "s3://b/p/DXNHCM04.md", "summary": "", "text": "reads PAYVSAM", "score": 0.5},
+]
+
+
+class TestGroundedPrompt:
+    def test_carries_the_evidence_with_document_identity(self):
+        prompt = build_grounded_prompt(_question(), "an answer", EVIDENCE)
+        assert "[1] DXCBD50A.md" in prompt
+        assert "Document summary: Profiling extract" in prompt
+        assert "IF PAY1 = 019" in prompt
+        assert "[2] DXNHCM04.md" in prompt
+
+    def test_still_names_no_system(self):
+        prompt = build_grounded_prompt(_question(), "an answer", EVIDENCE,
+                                       {"reference_answer": "ref", "evidence_status": "Supported"})
+        lowered = prompt.lower()
+        for leak in ("loops", "quick", "bedrock", "transport", "backend", "run_id"):
+            assert leak not in lowered, leak
+
+    def test_labels_the_reference_as_reported_not_scored(self):
+        prompt = build_grounded_prompt(_question(), "a", EVIDENCE,
+                                       {"reference_answer": "the ref", "evidence_status": "Partial"})
+        assert "report agreement, do not score against it" in prompt
+        assert "evidence status: Partial" in prompt
+        assert "the ref" in prompt
+
+    def test_omits_the_reference_block_when_there_is_none(self):
+        assert "REFERENCE ANSWER" not in build_grounded_prompt(_question(), "a", EVIDENCE)
+
+    def test_does_not_include_the_bank_key(self):
+        # The whole point: the key was the weakest link.
+        prompt = build_grounded_prompt(_question(), "a", EVIDENCE)
+        assert "DXCBD50A checks 019 then 007." not in prompt
+
+
+class TestGroundedParsing:
+    def test_reads_the_two_extras(self):
+        j = parse_judgment("q1", GROUNDED_GOOD, "m@v2")
+        assert j.reference_agreement == 1
+        assert j.unsupported_claims == ["PAY2 is written by DXCBD06E"]
+        assert j.total == 9
+
+    def test_extras_are_optional_under_the_key_based_prompt(self):
+        j = parse_judgment("q1", GOOD, "m@v1")
+        assert j.reference_agreement is None
+        assert j.unsupported_claims == []
+
+    def test_out_of_range_agreement_is_an_error(self):
+        raw = GROUNDED_GOOD.replace('"reference_agreement": 1', '"reference_agreement": 3')
+        with pytest.raises(JudgeError, match="reference_agreement"):
+            parse_judgment("q1", raw, "m@v2")
+
+    def test_unsupported_claims_must_be_a_list(self):
+        raw = GROUNDED_GOOD.replace('["PAY2 is written by DXCBD06E"]', '"just a string"')
+        with pytest.raises(JudgeError, match="must be a list"):
+            parse_judgment("q1", raw, "m@v2")
+
+
+class TestGroundedJudge:
+    def test_scored_by_names_the_grounded_prompt_version(self):
+        judge = BedrockJudge("m", client=_StubClient([]), grounded=True)
+        assert judge.scored_by == f"m@{GROUNDED_VERSION}"
+        assert GROUNDED_VERSION != PROMPT_VERSION
+
+    def test_grounded_mode_refuses_to_run_without_evidence(self):
+        judge = BedrockJudge("m", client=_StubClient([]), grounded=True)
+        with pytest.raises(JudgeError, match="needs retrieved evidence"):
+            judge.judge_one(_question(), "answer")
+
+    def test_grounded_mode_uses_the_grounded_system_prompt(self):
+        client = _StubClient([GROUNDED_GOOD])
+        judge = BedrockJudge("m", client=client, grounded=True)
+        judge.judge_one(_question(), "answer", evidence=EVIDENCE)
+        assert "EVIDENCE the system retrieved" in client.systems[0]
+        assert "unsupported_claims" in client.systems[0]
+
+    def test_judge_run_threads_evidence_and_reference_by_id(self):
+        client = _StubClient([GROUNDED_GOOD])
+        judge = BedrockJudge("m", client=client, grounded=True)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"},
+                           evidence={"q1": EVIDENCE},
+                           references={"q1": {"reference_answer": "ref"}})
+        assert len(report.judgments) == 1
+        assert "ref" in client.prompts[0]
+
+    def test_a_question_without_evidence_is_skipped_not_fatal(self):
+        judge = BedrockJudge("m", client=_StubClient([]), grounded=True)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"}, evidence={})
+        assert report.judgments == []
+        assert "needs retrieved evidence" in report.skipped[0]
+
+
+class TestGroundedLoaders:
+    def test_evidence_store_joins_on_exact_question_text(self, tmp_path):
+        import sqlite3, json as _json
+        db = tmp_path / "eval.sqlite3"
+        c = sqlite3.connect(db)
+        c.execute("create table exchanges (id integer primary key, kind text, question text, results_json text)")
+        c.execute("insert into exchanges (kind, question, results_json) values (?,?,?)",
+                  ("ask", "how does the certification gate work?", _json.dumps(EVIDENCE)))
+        c.execute("insert into exchanges (kind, question, results_json) values (?,?,?)",
+                  ("search", "how does the certification gate work?", _json.dumps([])))
+        c.commit(); c.close()
+        got = load_evidence_store(db, [_question("q1"), _question("q2", text="something else")])
+        assert list(got) == ["q1"]
+        assert got["q1"][0]["uri"].endswith("DXCBD50A.md")
+
+    def test_reference_json_round_trips(self, tmp_path):
+        import json as _json
+        path = tmp_path / "ref.json"
+        path.write_text(_json.dumps({"q1": {"reference_answer": "x", "human_rating": 4}}))
+        assert load_reference_json(path)["q1"]["human_rating"] == 4
+
+
+class TestGroundedCsv:
+    def test_extras_are_folded_into_notes_with_findable_prefixes(self, tmp_path):
+        draft = tmp_path / "rubric.csv"
+        with draft.open("w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(RUBRIC_ENTRY_COLUMNS), lineterminator="\n")
+            w.writeheader()
+            row = dict.fromkeys(RUBRIC_ENTRY_COLUMNS, ""); row["question_id"] = "q1"
+            w.writerow(row)
+        client = _StubClient([GROUNDED_GOOD])
+        judge = BedrockJudge("m", client=client, grounded=True)
+        report = judge_run(judge, [_question("q1")], {"q1": "a"}, evidence={"q1": EVIDENCE})
+        out = tmp_path / "judged.csv"
+        fill_export_csv(draft, out, report)
+        with out.open(encoding="utf-8", newline="") as fh:
+            note = next(csv.DictReader(fh))["notes"]
+        assert note.startswith("REF-AGREE:1 | UNSUPPORTED[1]: PAY2 is written by DXCBD06E")
+        assert note.endswith("one claim outruns the excerpts")

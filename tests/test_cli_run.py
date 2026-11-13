@@ -399,3 +399,47 @@ def test_run_help_mentions_the_profile_flag(capsys):
     with pytest.raises(SystemExit):
         main(["run", "--help"])
     assert "--profile" in capsys.readouterr().out
+
+
+class TestLoopsKbTransport:
+    """The loops-kb transport's local flag checks, none of which touch AWS."""
+
+    def test_a_missing_kb_repo_is_a_flag_error_not_an_auth_error(self, tmp_path, capsys):
+        # cli.py's validation order: a typo'd path must never be answered with
+        # "go authenticate first".
+        from atlas_eval.cli import main
+
+        bank = Path("data/banks/v7.yaml")
+        code = main([
+            "run", "--bank", str(bank), "--transport", "loops-kb",
+            "--kb-repo", str(tmp_path / "nope"),
+            "--runs", str(tmp_path / "runs"),
+            "--eval-db", str(tmp_path / "eval.sqlite3"),
+        ])
+        assert code == 2
+        assert "no served module at" in capsys.readouterr().out
+
+    def test_print_sheet_is_rejected_for_this_transport(self, tmp_path, capsys):
+        from atlas_eval.cli import main
+
+        code = main([
+            "run", "--bank", "data/banks/v7.yaml", "--transport", "loops-kb",
+            "--print-sheet", "--runs", str(tmp_path / "runs"),
+        ])
+        assert code == 2
+        assert "--print-sheet is only meaningful" in capsys.readouterr().out
+
+    def test_it_does_not_demand_an_account_id(self, tmp_path, capsys):
+        # The Quick control-plane snapshot does not apply here, so requiring
+        # --account-id would be a flag nobody can satisfy meaningfully.
+        from atlas_eval.cli import main
+
+        code = main([
+            "run", "--bank", "data/banks/v7.yaml", "--transport", "loops-kb",
+            "--kb-repo", str(tmp_path / "nope"),
+            "--runs", str(tmp_path / "runs"),
+            "--eval-db", str(tmp_path / "eval.sqlite3"),
+        ])
+        out = capsys.readouterr().out
+        assert code == 2
+        assert "--account-id" not in out
